@@ -96,18 +96,21 @@ def test_baixar_de_primeira() -> None:
 
 
 @pytest.mark.parametrize(
-    "falha",
+    "criar_falha",
     [
-        _http(503),
-        _http(500),
-        _http(429),
-        urllib.error.URLError("sem rede"),
-        TimeoutError("lento"),
-        ConnectionResetError("caiu"),
+        # Criadas só dentro do teste: um HTTPError criado na coleta do pytest e nunca
+        # usado deixaria a resposta aberta (ResourceWarning).
+        lambda: _http(503),
+        lambda: _http(500),
+        lambda: _http(429),
+        lambda: urllib.error.URLError("sem rede"),
+        lambda: TimeoutError("lento"),
+        lambda: ConnectionResetError("caiu"),
     ],
+    ids=["503", "500", "429", "sem_rede", "timeout", "conexao_caiu"],
 )
-def test_falha_temporaria_tenta_de_novo(falha: Exception) -> None:
-    abrir, chamadas = _abridor([falha, b"ok"])
+def test_falha_temporaria_tenta_de_novo(criar_falha: Callable[[], Exception]) -> None:
+    abrir, chamadas = _abridor([criar_falha(), b"ok"])
     esperas: list[float] = []
     assert baixar(abrir=abrir, dormir=esperas.append) == b"ok"
     assert len(chamadas) == 2

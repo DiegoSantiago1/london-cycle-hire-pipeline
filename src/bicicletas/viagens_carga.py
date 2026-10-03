@@ -252,6 +252,10 @@ def main(argumentos: list[str] | None = None) -> int:
     except psycopg.OperationalError as erro:
         print(f"Erro: banco inacessível ({erro}).", file=sys.stderr)
         return 1
+    except psycopg.Error as erro:
+        # Ex.: tabela inexistente (migração não aplicada): mensagem, não traceback.
+        print(f"Erro no banco: {erro} (rodou as migrações?)", file=sys.stderr)
+        return 1
     print(f"Fim: {len(arquivos) - erros} arquivos ok, {erros} recusados.")
     return 1 if erros else 0
 
