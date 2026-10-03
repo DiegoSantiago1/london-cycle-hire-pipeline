@@ -9,7 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -212,3 +212,33 @@ def test_dia_invalido_e_recusado(dia: str, ambiente: dict[str, str]) -> None:
     r = _rodar("empacotar_dia.sh", dia, env=ambiente)
     assert r.returncode != 0
     assert not (_estado(ambiente) / "chamadas.log").exists()  # nem chegou a chamar o gh
+
+
+# ---------------------------------------------------------------- baixar_retratos.sh
+def test_baixa_pacote_quando_existe_e_soltos_quando_nao(
+    tmp_path: Path, ambiente: dict[str, str]
+) -> None:
+    hoje = datetime.now(UTC).date()
+    ontem = (hoje - timedelta(days=1)).isoformat()
+    _release_com_coleta(ambiente, hoje.isoformat())  # hoje: só arquivos soltos
+    release_ontem = _release_com_coleta(ambiente, ontem)
+    (release_ontem / f"pacote_bikepoint_{ontem}.tar").write_bytes(b"pacote")
+    destino = tmp_path / "retratos"
+    r = _rodar("baixar_retratos.sh", "3", _posix(destino), env=ambiente)
+    assert r.returncode == 0, r.stderr
+    nomes = sorted(p.name for p in destino.iterdir())
+    assert nomes == sorted(
+        [
+            f"bikepoint_{hoje.isoformat()}T17-22-05Z.json.gz",
+            f"execucao_{hoje.isoformat()}T17-22-05Z.json",
+            f"pacote_bikepoint_{ontem}.tar",  # de ontem, só o pacote
+        ]
+    )
+    assert "sem release" in r.stderr  # anteontem não teve coleta
+
+
+@pytest.mark.parametrize("dias", ["0", "abc", "401", "-1"])
+def test_numero_de_dias_invalido(dias: str, tmp_path: Path, ambiente: dict[str, str]) -> None:
+    r = _rodar("baixar_retratos.sh", dias, _posix(tmp_path / "x"), env=ambiente)
+    assert r.returncode != 0
+    assert not (_estado(ambiente) / "chamadas.log").exists()

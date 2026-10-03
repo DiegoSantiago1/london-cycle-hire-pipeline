@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>London Cycle Hire Pipeline</title>
+<meta name="description" content="Where London's public bikes run out: a live data pipeline on TfL Santander Cycles. Snapshots of 800 stations every 15 minutes, 41 million trips, dbt and PostgreSQL, updated every day.">
+<meta property="og:title" content="London Cycle Hire Pipeline">
+<meta property="og:description" content="Where London's public bikes run out, and where operations should act first. Live data, updated every day.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f5f1; --surface: #fcfcfb; --surface-2: #efeee8; --line: #e1e0d9;
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #75736d; --axis: #c3c2b7;
+    --vazia: #e34948; --vazia-2: #f2a6a3; --cheia: #2a78d6; --cheia-2: #9ec5f4;
+    --neutro: #c3c2b7; --fluxo: rgba(11, 11, 11, .55);
+    --bom: #0ca30c; --alerta: #fab219; --critico: #d03b3b;
+    --hero: #0d1424; --hero-ink: #f4f2ec; --hero-ink-2: #b9c3d6;
+    --sombra: 0 1px 2px rgba(11, 11, 11, .06), 0 8px 24px rgba(11, 11, 11, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --line: #2c2c2a;
+      --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #9a988f; --axis: #383835;
+      --vazia: #e66767; --vazia-2: #8a3a3a; --cheia: #3987e5; --cheia-2: #1c5cab;
+      --neutro: #4a4a46; --fluxo: rgba(255, 255, 255, .6);
+      --hero: #05080f; --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --line: #2c2c2a;
+    --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #9a988f; --axis: #383835;
+    --vazia: #e66767; --vazia-2: #8a3a3a; --cheia: #3987e5; --cheia-2: #1c5cab;
+    --neutro: #4a4a46; --fluxo: rgba(255, 255, 255, .6);
+    --hero: #05080f; --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.6 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, .num { font-family: "Space Grotesk", Inter, system-ui, sans-serif; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(2.3rem, 6.2vw, 5rem); line-height: 1.03; margin: 0; font-weight: 700; }
+  h2 { font-size: clamp(1.8rem, 4vw, 3.1rem); line-height: 1.08; margin: 0 0 14px; font-weight: 700; }
+  h3 { font-size: 1.1rem; margin: 0 0 6px; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 0 0 12px; }
+  a { color: var(--cheia); }
+  code { font-size: .9em; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+  .num { font-weight: 700; }
+  .muted { color: var(--ink-2); }
+  .nota { color: var(--ink-3); font-size: .92rem; }
+
+  #progresso { position: fixed; inset: 0 0 auto 0; height: 4px; z-index: 1001; }
+  #progresso span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cheia), var(--vazia)); }
+  .topo { position: fixed; top: 14px; right: 16px; z-index: 1001; display: flex; gap: 8px; }
+  .topo button, .seg button {
+    font: 600 13px/1 Inter, system-ui, sans-serif; padding: 9px 13px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(127, 135, 150, .35); background: color-mix(in srgb, var(--surface) 85%, transparent);
+    color: var(--ink); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, tr:focus-visible { outline: 2px solid var(--cheia); outline-offset: 2px; }
+  .pontos { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+  .pontos a { width: 10px; height: 10px; border-radius: 50%; background: var(--axis); display: block; }
+  .pontos a.ativo { background: var(--ink); transform: scale(1.3); }
+  @media (max-width: 760px) { .pontos { display: none; } }
+
+  .cap { min-height: 100vh; padding: 96px 16px 72px; display: flex; align-items: center; }
+  .cap > .dentro { width: 100%; max-width: 1180px; margin: 0 auto; }
+  .olho { font: 600 .82rem/1.2 Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 14px; }
+  .lead { font-size: 1.15rem; color: var(--ink-2); max-width: 760px; }
+
+  .hero { background: var(--hero); color: var(--hero-ink); position: relative; overflow: hidden; }
+  .hero .olho { color: var(--hero-ink-2); }
+  .hero h1 span { color: #f08a8a; }
+  .hero .lead { color: var(--hero-ink-2); }
+  .hero::after {
+    content: ""; position: absolute; inset: auto -10% -40% auto; width: 70vmax; height: 70vmax; border-radius: 50%;
+    background: radial-gradient(circle, rgba(57, 135, 229, .28), transparent 60%); pointer-events: none;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .chip { border: 1px solid rgba(185, 195, 214, .35); border-radius: 999px; padding: 8px 14px; font-size: .92rem; color: var(--hero-ink); }
+  .chip b { font-family: "Space Grotesk", sans-serif; }
+  .desce { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); color: var(--hero-ink-2); font-size: .85rem; text-align: center; }
+
+  .grade { display: grid; gap: 18px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 620px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+  .cartao { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: var(--sombra); min-width: 0; }
+  .pergunta { display: flex; gap: 14px; align-items: flex-start; }
+  .pergunta .n { font: 700 1.4rem/1 "Space Grotesk", sans-serif; color: var(--ink-3); }
+  .pergunta p { margin: 0; font-weight: 500; }
+  .tile .num { font-size: clamp(1.9rem, 3.4vw, 2.7rem); line-height: 1.05; display: block; margin-bottom: 4px; }
+  .tile .rot { color: var(--ink-2); font-size: .95rem; }
+  .grafico { position: relative; height: 280px; }
+  .grafico.baixo { height: 220px; }
+
+  .controles { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin: 18px 0 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+  .seg button { border: 0; background: transparent; padding: 8px 14px; backdrop-filter: none; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .hora { display: flex; align-items: center; gap: 10px; flex: 1 1 280px; }
+  .hora input { flex: 1; accent-color: var(--ink); }
+  .hora output { font: 700 1.25rem/1 "Space Grotesk", sans-serif; min-width: 64px; font-variant-numeric: tabular-nums; }
+  #mapa { height: min(68vh, 620px); border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--sombra); z-index: 1; }
+  .fundo-claro { filter: grayscale(1) contrast(.85) brightness(1.06); }
+  .fundo-escuro { filter: grayscale(1) invert(1) brightness(.78) contrast(.9); }
+  .leaflet-container { background: var(--surface-2); font: 14px/1.4 Inter, system-ui, sans-serif; }
+  .leaflet-tooltip { background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--sombra); border-radius: 10px; padding: 8px 10px; }
+  .leaflet-tooltip-top:before { border-top-color: var(--surface); }
+  .legenda { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: .9rem; color: var(--ink-2); }
+  .legenda span { display: inline-flex; align-items: center; gap: 7px; }
+  .legenda i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px var(--surface); }
+  .legenda i.linha { width: 22px; height: 3px; border-radius: 2px; box-shadow: none; }
+
+  .tabela { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .tabela th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .tabela td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  #t_ranking td:nth-child(2) { min-width: 220px; }
+  .tabela td.n, .tabela th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tabela tbody tr { cursor: pointer; }
+  .tabela tbody tr:hover, .tabela tbody tr.sel { background: var(--surface-2); }
+  .barra { display: flex; gap: 2px; height: 10px; min-width: 90px; }
+  .barra b { display: block; height: 100%; border-radius: 3px; }
+  .rolagem { overflow-x: auto; }
+
+  .fluxo-pipeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 26px 0; }
+  @media (max-width: 900px) { .fluxo-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .no { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+  .no b { display: block; font-family: "Space Grotesk", sans-serif; font-size: 1.02rem; }
+  .no span { color: var(--ink-2); font-size: .88rem; }
+  .no .etq { font: 600 .72rem/1 Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; display: block; }
+
+  .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+  .status i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .status.ok i { background: var(--bom); } .status.atencao i { background: var(--alerta); } .status.falha i { background: var(--critico); }
+
+  footer { padding: 40px 16px 60px; color: var(--ink-3); font-size: .9rem; }
+  footer .dentro { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+  .rev { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .rev.visto { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rev { opacity: 1; transform: none; transition: none; } }
+  .aviso { border-left: 3px solid var(--alerta); padding: 10px 14px; background: var(--surface); border-radius: 0 12px 12px 0; margin: 16px 0; font-size: .95rem; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div id="progresso" aria-hidden="true"><span></span></div>
+<div class="topo">
+  <button id="idioma" type="button" aria-label="Mudar para português">PT</button>
+  <button id="tema" type="button" aria-label="Toggle dark mode">◐</button>
+</div>
+<nav class="pontos" id="pontos" aria-label="Chapters"></nav>
+
+<main>
+  <section class="cap hero" id="inicio" data-titulo="Start">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="kicker">Data pipeline · live TfL data</div>
+      <h1 class="rev" data-i18n-html="titulo">Where London's bikes <span>run out</span>, and where to act first</h1>
+      <p class="lead rev" data-i18n="intro" style="margin-top:22px">Every 15 minutes the pipeline photographs all of London's public bike stations. Joined with 41 million published trips, it shows which stations run empty or full, when, and how many trips that costs.</p>
+      <div class="chips rev" id="chips"></div>
+    </div>
+    <div class="desce" aria-hidden="true"><span data-i18n="desce">Scroll or press ↓</span><br>⌄</div>
+  </section>
+
+  <section class="cap" id="problema" data-titulo="Problem">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="o_problema">The business problem</div>
+      <h2 class="rev" data-i18n="h_problema">Rebalancing: bikes flow one way in the morning, the other way at night</h2>
+      <p class="lead rev" data-i18n="p_problema">Residential stations empty out before work while central ones fill up; in the evening it reverses. An empty station is a trip that never happens. A full one is a rider who cannot return the bike.</p>
+      <div class="grade g4 rev" style="margin:24px 0">
+        <div class="cartao pergunta"><span class="n">1</span><p data-i18n="q1">Which stations run empty or full, and when?</p></div>
+        <div class="cartao pergunta"><span class="n">2</span><p data-i18n="q2">How long does each one spend with no bikes?</p></div>
+        <div class="cartao pergunta"><span class="n">3</span><p data-i18n="q3">Where do the bikes go, hour by hour?</p></div>
+        <div class="cartao pergunta"><span class="n">4</span><p data-i18n="q4">Where should operations act first?</p></div>
+      </div>
+      <div class="grade g2 rev">
+        <div class="cartao">
+          <h3 data-i18n="h_tendencia">Trips per month</h3>
+          <p class="nota" id="nota_tendencia"></p>
+          <div class="grafico"><canvas id="g_tendencia" role="img" aria-label="Trips per month"></canvas></div>
+        </div>
+        <div class="cartao">
+          <h3 data-i18n="h_eletricas">Share of trips on e-bikes</h3>
+          <p class="nota" data-i18n="n_eletricas">Recorded only in the new file format. The first e-bike trips in the files are on 14 September 2022.</p>
+          <div class="grafico"><canvas id="g_eletricas" role="img" aria-label="Share of trips on e-bikes per month"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cap" id="mapa-cap" data-titulo="Map">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="o_mapa">Questions 1 and 3 · When and where</div>
+      <h2 class="rev" data-i18n="h_mapa">Move the hour and watch the city empty and fill</h2>
+      <p class="lead rev" id="p_mapa"></p>
+      <div class="controles rev">
+        <div class="seg" role="group" aria-label="Map mode">
+          <button type="button" data-modo="risco" aria-pressed="true" data-i18n="m_risco">Empty / full</button>
+          <button type="button" data-modo="fluxos" aria-pressed="false" data-i18n="m_fluxos">Flows</button>
+        </div>
+        <div class="seg" role="group" aria-label="Day type" id="seg_dia">
+          <button type="button" data-dia="util" aria-pressed="true" data-i18n="d_util">Weekdays</button>
+          <button type="button" data-dia="fds" aria-pressed="false" data-i18n="d_fds">Weekend</button>
+        </div>
+        <label class="hora"><span class="muted" data-i18n="hora">Hour</span>
+          <input type="range" id="hora" min="0" max="23" step="1" value="8" aria-describedby="hora_valor">
+          <output id="hora_valor">08:00</output>
+        </label>
+      </div>
+      <div id="mapa" class="rev" role="application" aria-label="Map of London bike stations"></div>
+      <div class="legenda" id="legenda"></div>
+      <p class="nota" id="nota_mapa" style="margin-top:10px"></p>
+    </div>
+  </section>
+
+  <section class="cap" id="ranking" data-titulo="Act first">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="o_ranking">Questions 2 and 4 · Where to act first</div>
+      <h2 class="rev" data-i18n="h_ranking">Ranked by the trips each station is estimated to lose</h2>
+      <p class="lead rev" data-i18n="p_ranking">Hours empty (from the live snapshots) × how many people usually take a bike there at that hour (from a year of trips). The same for full stations and returns.</p>
+      <p class="aviso" id="aviso_poucos" hidden></p>
+      <div class="grade g4 rev" style="margin:22px 0" id="tiles"></div>
+      <div class="grade rev" style="align-items:start">
+        <div class="cartao rolagem">
+          <table class="tabela" id="t_ranking" aria-label="Stations ranked by estimated lost demand"></table>
+        </div>
+        <div class="cartao">
+          <h3 id="h_perfil"></h3>
+          <p class="nota" data-i18n="n_perfil">Average weekday, last 12 months of published trips. Click a station in the table or on the map.</p>
+          <div class="grafico"><canvas id="g_perfil" role="img" aria-label="Typical pickups and returns by hour"></canvas></div>
+        </div>
+      </div>
+      <p class="aviso rev" data-i18n="aviso_estimativa">This is a conservative estimate: past trips only happened when there was a bike, so the usual rate already understates demand at stations that are often empty.</p>
+    </div>
+  </section>
+
+  <section class="cap" id="pipeline" data-titulo="Pipeline">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="o_pipeline">How it is built</div>
+      <h2 class="rev" data-i18n="h_pipeline">Data that never stops arriving</h2>
+      <p class="lead rev" data-i18n="p_pipeline">Two rhythms: live snapshots every 15 minutes, and trip files that TfL publishes months late. Raw data is stored untouched; everything else is rebuilt from it every day.</p>
+      <div class="fluxo-pipeline rev">
+        <div class="no"><span class="etq" data-i18n="e1">every 15 min</span><b data-i18n="n1">Collect</b><span data-i18n="n1s">TfL BikePoint API, retries, run record</span></div>
+        <div class="no"><span class="etq" data-i18n="e2">raw, untouched</span><b data-i18n="n2">Data lake</b><span data-i18n="n2s">gzip byte for byte, S3-style keys, daily package with hashes</span></div>
+        <div class="no"><span class="etq" data-i18n="e3">months late</span><b data-i18n="n3">Trip files</b><span data-i18n="n3s">downloaded by ETag, loaded by column name, one transaction per file</span></div>
+        <div class="no"><span class="etq">PostgreSQL</span><b>bruto → staging</b><span data-i18n="n4s">typed, two file formats unified</span></div>
+        <div class="no"><span class="etq">dbt</span><b>marts</b><span data-i18n="n5s">occupancy, lost demand, ranking, with tests</span></div>
+        <div class="no"><span class="etq" data-i18n="e6">daily</span><b data-i18n="n6">This page</b><span data-i18n="n6s">rebuilt from scratch; not published if a test fails</span></div>
+      </div>
+      <div class="grade g3 rev">
+        <div class="cartao"><span class="num" style="font-size:2.2rem" id="k_variantes">6</span><h3 data-i18n="f1">header variants in the trip files</h3><p class="muted" data-i18n="f1s">Columns in different orders, a file without quotes and with dates like 14/08/2024, station numbers with the leading zeros stripped by Excel. Read by name, never by position; an unknown column stops the load.</p></div>
+        <div class="cartao"><span class="num" style="font-size:2.2rem">0</span><h3 data-i18n="f2">duplicated trips across 148 files</h3><p class="muted" data-i18n="f2s">File names overlap on some days, so duplicates were expected. Measured before removing anything: none. A uniqueness test now guards it.</p></div>
+        <div class="cartao"><span class="num" style="font-size:2.2rem" id="k_frescor">–</span><h3 data-i18n="f3">median age of the API data when collected</h3><p class="muted" data-i18n="f3s">The API serves a cache: consecutive snapshots can be identical. Occupancy uses the time each station was really updated.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cap" id="saude" data-titulo="Health">
+    <div class="dentro">
+      <div class="olho rev" data-i18n="o_saude">Pipeline health · live</div>
+      <h2 class="rev" data-i18n="h_saude">How do we know today's data arrived?</h2>
+      <p class="lead rev" data-i18n="p_saude">Every run writes a record, success or failure. Scheduled runs are compared with the time they should have started: that delay, measured run by run, is the evidence for moving the collector off the GitHub Actions cron.</p>
+      <div class="grade g4 rev" style="margin:22px 0" id="tiles_saude"></div>
+      <div class="cartao rolagem rev"><table class="tabela" id="t_saude" aria-label="Collection health by day"></table></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="dentro">
+    <div><b>Powered by TfL Open Data.</b> <span data-i18n="rodape">Contains Transport for London data used under the TfL transport data terms (Open Government Licence v2.0 based). Not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors.</span></div>
+    <div><a href="https://github.com/DiegoSantiago1/london-cycle-hire-pipeline">GitHub</a> · <a href="https://diegosantiago1.github.io/Portifolio/">Diego Freitas Santiago</a> · <span id="gerado"></span></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+"use strict";
+const TXT = {
+  en: {},
+  pt: {
+    kicker: "Pipeline de dados · dados ao vivo da TfL",
+    titulo: "Onde as bicicletas de Londres <span>acabam</span>, e onde agir primeiro",
+    intro: "A cada 15 minutos o pipeline fotografa todas as estações de bicicletas públicas de Londres. Somado a 41 milhões de viagens publicadas, mostra quais estações ficam vazias ou cheias, quando, e quantas viagens isso custa.",
+    desce: "Role ou aperte ↓",
+    o_problema: "O problema de negócio",
+    h_problema: "Rebalanceamento: de manhã as bicicletas vão para um lado, à noite para o outro",
+    p_problema: "As estações residenciais esvaziam antes do trabalho e as do centro lotam; à noite, o inverso. Estação vazia é viagem que não acontece. Estação cheia é gente que não consegue devolver a bicicleta.",
+    q1: "Quais estações ficam vazias ou cheias, e quando?", q2: "Quanto tempo cada uma passa sem bicicleta?",
+    q3: "Para onde vão as bicicletas, hora a hora?", q4: "Onde a operação deve agir primeiro?",
+    h_tendencia: "Viagens por mês", h_eletricas: "Participação das bicicletas elétricas",
+    n_eletricas: "Registrada só no formato novo dos arquivos. As primeiras viagens de elétrica nos arquivos são de 14 de setembro de 2022.",
+    o_mapa: "Perguntas 1 e 3 · Quando e onde", h_mapa: "Mude a hora e veja a cidade esvaziar e encher",
+    m_risco: "Vazia / cheia", m_fluxos: "Fluxos", d_util: "Dias úteis", d_fds: "Fim de semana", hora: "Hora",
+    o_ranking: "Perguntas 2 e 4 · Onde agir primeiro", h_ranking: "Ordenadas pelas viagens que cada estação deve perder",
+    p_ranking: "Horas vazia (dos retratos ao vivo) × quantas pessoas costumam pegar bicicleta ali naquela hora (de um ano de viagens). O mesmo para estação cheia e devoluções.",
+    n_perfil: "Dia útil médio, últimos 12 meses de viagens publicadas. Clique numa estação na tabela ou no mapa.",
+    aviso_estimativa: "É uma estimativa conservadora: as viagens passadas só aconteceram quando havia bicicleta, então a taxa usual já subestima a procura nas estações que costumam ficar vazias.",
+    o_pipeline: "Como foi construído", h_pipeline: "Dados que não param de chegar",
+    p_pipeline: "Dois ritmos: retratos ao vivo a cada 15 minutos e arquivos de viagens que a TfL publica com meses de atraso. O bruto é guardado intocado; todo o resto é recalculado a partir dele todo dia.",
+    e1: "a cada 15 min", n1: "Coleta", n1s: "API BikePoint da TfL, novas tentativas, registro de cada execução",
+    e2: "bruto, intocado", n2: "Data lake", n2s: "gzip byte a byte, chaves no formato do S3, pacote diário com hashes",
+    e3: "meses de atraso", n3: "Arquivos de viagens", n3s: "baixados por ETag, carregados pelo nome da coluna, uma transação por arquivo",
+    n4s: "tipado, os dois formatos unificados", n5s: "ocupação, demanda perdida, ranking, com testes",
+    e6: "todo dia", n6: "Esta página", n6s: "recriada do zero; não é publicada se um teste falha",
+    f1: "variantes de cabeçalho nos arquivos de viagens",
+    f1s: "Colunas em ordens diferentes, um arquivo sem aspas e com datas como 14/08/2024, números de estação sem os zeros à esquerda (passaram pelo Excel). Lidos pelo nome, nunca pela posição; coluna desconhecida para a carga.",
+    f2: "viagens repetidas entre 148 arquivos",
+    f2s: "Os nomes dos arquivos se sobrepõem em alguns dias, então se esperavam repetições. Medido antes de apagar qualquer coisa: nenhuma. Um teste de unicidade agora protege a regra.",
+    f3: "idade mediana do dado da API na coleta",
+    f3s: "A API serve de um cache: retratos seguidos podem ser idênticos. A ocupação usa o horário em que cada estação foi atualizada de verdade.",
+    o_saude: "Saúde do pipeline · ao vivo", h_saude: "Como saber que o dado de hoje chegou?",
+    p_saude: "Cada execução grava um registro, de sucesso ou de falha. As execuções agendadas são comparadas com o horário em que deveriam começar: esse atraso, medido execução a execução, é a evidência para tirar a coleta do cron do GitHub Actions.",
+    rodape: "Contém dados da Transport for London usados conforme os termos de dados de transporte da TfL (baseados na Open Government Licence v2.0). Sem vínculo com a TfL nem endosso dela. Mapa © colaboradores do OpenStreetMap."
+  }
+};
+const DIN = {
+  en: {
+    chip_viagens: n => `<b>${n}</b> trips since 2022`, chip_estacoes: n => `<b>${n}</b> stations every 15 min`,
+    chip_atualiza: d => `updated <b>${d}</b>`,
+    nota_tendencia: (a, b) => `Complete months, ${a} to ${b}. In Sep 2022 TfL changed its data system (new file format): two days are missing and the level is ~25% lower afterwards. The source does not say whether that is demand or a change in what is counted, so levels across the line are not directly comparable.`,
+    troca: "new TfL data system", incompletos: n => `${n} day(s) missing in the files`,
+    p_mapa: (d, n) => `Observed since ${d}, ${n} of live snapshots. Each dot is a station; its colour says how much of that hour it spent empty or full over the last 7 days observed.`,
+    leg_vazia: "Empty ≥ 50% of the hour", leg_vazia2: "Empty 10–50%", leg_cheia: "Full ≥ 50%", leg_cheia2: "Full 10–50%",
+    leg_ok: "Mostly fine / no data", leg_fluxo: "Top 20 trips between stations at this hour (average weekday)",
+    nota_risco: "Weekday and weekend patterns differ: commuting only exists on weekdays.",
+    nota_fluxos: "Flows come from the last 12 months of published trips; line width is the average number of trips per weekday.",
+    tip_risco: (n, v, c, h) => `<b>${n}</b><br>${h}: empty ${v}, full ${c}`,
+    tip_sem: (n, h) => `<b>${n}</b><br>${h}: not observed yet`,
+    tip_fluxo: (a, b, v) => `<b>${a}</b> → <b>${b}</b><br>${v} trips per weekday`,
+    t_estacao: "Station", t_perdidas: "Lost trips", t_barradas: "Blocked returns", t_horas: "Hours empty / full",
+    tile_vazias: "stations empty for at least 1 hour", tile_cheias: "stations full for at least 1 hour",
+    tile_perdidas: "trips estimated lost", tile_barradas: "returns estimated blocked",
+    periodo: (a, b) => a === b ? `on ${a}` : `from ${a} to ${b}`,
+    perfil: n => `Typical day at ${n}`, retiradas: "Pickups", devolucoes: "Returns",
+    s_ultima: "last snapshot", s_janelas: "scheduled slots collected (last day)", s_atraso: "median scheduler delay",
+    s_tfl: "since TfL published the latest trip file",
+    st_ok: "On time", st_atencao: "Late", st_falha: "Stopped",
+    min_atras: m => m < 60 ? `${Math.round(m)} min ago` : `${(m / 60).toFixed(1)} h ago`,
+    dias: n => `${n} days`, horas_obs: h => h < 48 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`,
+    t_dia: "Day (UTC)", t_exec: "Runs", t_falhas: "Failures", t_janelas: "Slots with data", t_atraso: "Delay median / p90 (min)",
+    sem_agendada: "Scheduled runs have not started yet", gerado: d => `page data generated ${d}`,
+    aviso_poucos: (d, h) => `Live collection started on ${d} (${h} of snapshots so far). The ranking needs a few days of data to mean something, and gets better every day.`,
+    sem_ranking: "No lost demand estimated yet: there are not enough live snapshots in the period."
+  },
+  pt: {
+    chip_viagens: n => `<b>${n}</b> viagens desde 2022`, chip_estacoes: n => `<b>${n}</b> estações a cada 15 min`,
+    chip_atualiza: d => `atualizado em <b>${d}</b>`,
+    nota_tendencia: (a, b) => `Meses completos, de ${a} a ${b}. Em set/2022 a TfL trocou o sistema de dados (formato novo dos arquivos): faltam dois dias e o nível fica ~25% menor depois. A fonte não diz se é demanda ou mudança no que é contado, então os níveis antes e depois da linha não são diretamente comparáveis.`,
+    troca: "novo sistema de dados da TfL", incompletos: n => `${n} dia(s) faltando nos arquivos`,
+    p_mapa: (d, n) => `Observado desde ${d}, ${n} de retratos ao vivo. Cada ponto é uma estação; a cor diz quanto daquela hora ela passou vazia ou cheia nos últimos 7 dias observados.`,
+    leg_vazia: "Vazia ≥ 50% da hora", leg_vazia2: "Vazia 10–50%", leg_cheia: "Cheia ≥ 50%", leg_cheia2: "Cheia 10–50%",
+    leg_ok: "Normal na maior parte / sem dado", leg_fluxo: "As 20 maiores ligações entre estações nesta hora (dia útil médio)",
+    nota_risco: "Dias úteis e fim de semana são diferentes: o trajeto casa–trabalho só existe nos dias úteis.",
+    nota_fluxos: "Os fluxos vêm dos últimos 12 meses de viagens publicadas; a espessura é a média de viagens por dia útil.",
+    tip_risco: (n, v, c, h) => `<b>${n}</b><br>${h}: vazia ${v}, cheia ${c}`,
+    tip_sem: (n, h) => `<b>${n}</b><br>${h}: ainda sem observação`,
+    tip_fluxo: (a, b, v) => `<b>${a}</b> → <b>${b}</b><br>${v} viagens por dia útil`,
+    t_estacao: "Estação", t_perdidas: "Viagens perdidas", t_barradas: "Devoluções barradas", t_horas: "Horas vazia / cheia",
+    tile_vazias: "estações vazias por pelo menos 1 hora", tile_cheias: "estações cheias por pelo menos 1 hora",
+    tile_perdidas: "viagens perdidas (estimativa)", tile_barradas: "devoluções barradas (estimativa)",
+    periodo: (a, b) => a === b ? `em ${a}` : `de ${a} a ${b}`,
+    perfil: n => `Dia típico em ${n}`, retiradas: "Retiradas", devolucoes: "Devoluções",
+    s_ultima: "último retrato", s_janelas: "horários agendados com coleta (último dia)", s_atraso: "atraso mediano do agendador",
+    s_tfl: "desde que a TfL publicou o último arquivo de viagens",
+    st_ok: "Em dia", st_atencao: "Atrasada", st_falha: "Parada",
+    min_atras: m => m < 60 ? `há ${Math.round(m)} min` : `há ${(m / 60).toFixed(1).replace(".", ",")} h`,
+    dias: n => `${n} dias`, horas_obs: h => h < 48 ? `${Math.round(h)} horas` : `${Math.round(h / 24)} dias`,
+    t_dia: "Dia (UTC)", t_exec: "Execuções", t_falhas: "Falhas", t_janelas: "Horários com dado", t_atraso: "Atraso mediano / p90 (min)",
+    sem_agendada: "As execuções agendadas ainda não começaram", gerado: d => `dados da página gerados em ${d}`,
+    aviso_poucos: (d, h) => `A coleta ao vivo começou em ${d} (${h} de retratos até agora). O ranking precisa de alguns dias de dados para fazer sentido e melhora a cada dia.`,
+    sem_ranking: "Ainda não há demanda perdida estimada: faltam retratos ao vivo no período."
+  }
+};
+
+let lang = "en", D = null, mapa = null, camada = null, modo = "risco", tipoDia = "util", estacaoSel = null;
+const graficos = {};
+const salvar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento: ok */ } };
+const ler = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (n, d = 0) => (n == null ? "–" : Number(n).toLocaleString(lang === "pt" ? "pt-BR" : "en-GB", { minimumFractionDigits: d, maximumFractionDigits: d }));
+const pct = v => (v == null ? "–" : fmt(v * 100, 0) + "%");
+const dataLonga = s => new Date(s.length === 10 ? s + "T12:00:00Z" : s).toLocaleDateString(lang === "pt" ? "pt-BR" : "en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
+const mesCurto = s => new Date(s + "T12:00:00Z").toLocaleDateString(lang === "pt" ? "pt-BR" : "en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
+const horaTxt = h => String(h).padStart(2, "0") + ":00";
+const t = k => DIN[lang][k];
+
+function aplicarIdioma() {
+  document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    if (!el.dataset.en) el.dataset.en = el.textContent;
+    el.textContent = lang === "pt" ? (TXT.pt[el.dataset.i18n] ?? el.dataset.en) : el.dataset.en;
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    if (!el.dataset.en) el.dataset.en = el.innerHTML;
+    el.innerHTML = lang === "pt" ? (TXT.pt[el.dataset.i18nHtml] ?? el.dataset.en) : el.dataset.en;
+  });
+  const b = document.getElementById("idioma");
+  b.textContent = lang === "pt" ? "EN" : "PT";
+  b.setAttribute("aria-label", lang === "pt" ? "Switch to English" : "Mudar para português");
+  if (D) desenharTudo();
+}
+
+function desenharTudo() {
+  chips(); tendencia(); textoMapa(); legenda(); desenharMapa(); tiles(); tabelaRanking();
+  perfil(estacaoSel || (D.ranking[0] ? D.ranking[0].terminal : maisMovimentada())); pipeline(); saude();
+  document.getElementById("gerado").textContent = t("gerado")(new Date(D.gerado_em).toLocaleString(lang === "pt" ? "pt-BR" : "en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" }) + " (London)");
+}
+
+function chips() {
+  const v = D.viagens || {};
+  document.getElementById("chips").innerHTML = [
+    t("chip_viagens")(fmt(Number(v.viagens_total) / 1e6, 1) + (lang === "pt" ? " mi" : "M")),
+    t("chip_estacoes")(fmt(D.estacoes.length)),
+    t("chip_atualiza")(dataLonga(D.gerado_em))
+  ].map(c => `<span class="chip">${c}</span>`).join("");
+}
+
+function opcoesBase(extra = {}) {
+  const ink2 = css("--ink-2"), linha = css("--line");
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: css("--surface"), titleColor: css("--ink"), bodyColor: css("--ink"), borderColor: linha, borderWidth: 1, padding: 10 } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: ink2, maxRotation: 0, autoSkipPadding: 14 }, border: { color: css("--axis") } },
+      y: { grid: { color: linha }, ticks: { color: ink2 }, border: { display: false }, beginAtZero: true }
+    }
+  }, extra);
+}
+function grafico(id, cfg) { if (graficos[id]) graficos[id].destroy(); graficos[id] = new Chart(document.getElementById(id), cfg); }
+
+function tendencia() {
+  const m = D.tendencia;
+  if (!m.length) return;
+  document.getElementById("nota_tendencia").textContent = t("nota_tendencia")(mesCurto(m[0].mes), mesCurto(m[m.length - 1].mes));
+  const iTroca = m.findIndex(x => x.mes === "2022-09-01");
+  const marcaTroca = { id: "marcaTroca", afterDatasetsDraw(ch) {
+    if (iTroca < 0) return;
+    const x = ch.scales.x.getPixelForValue(iTroca), area = ch.chartArea, c = ch.ctx;
+    c.save(); c.strokeStyle = css("--ink-3"); c.setLineDash([4, 4]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x, area.top); c.lineTo(x, area.bottom); c.stroke(); c.setLineDash([]);
+    c.fillStyle = css("--ink-2"); c.font = "12px Inter, system-ui, sans-serif"; c.fillText(t("troca"), x + 6, area.top + 12); c.restore();
+  } };
+  grafico("g_tendencia", { type: "line", plugins: [marcaTroca], data: { labels: m.map(x => mesCurto(x.mes)), datasets: [{ label: lang === "pt" ? "Viagens" : "Trips", data: m.map(x => x.viagens), borderColor: css("--cheia"), borderWidth: 2, pointRadius: m.map(x => (x.dias_incompletos ? 4 : 0)), pointBackgroundColor: css("--surface"), pointBorderColor: css("--cheia"), pointBorderWidth: 2, pointHoverRadius: 5, tension: .25 }] },
+    options: opcoesBase({ plugins: { ...opcoesBase().plugins, tooltip: { ...opcoesBase().plugins.tooltip, callbacks: { label: c => " " + fmt(c.parsed.y), afterLabel: c => (m[c.dataIndex].dias_incompletos ? " " + t("incompletos")(m[c.dataIndex].dias_incompletos) : "") } } }, scales: { ...opcoesBase().scales, y: { ...opcoesBase().scales.y, ticks: { color: css("--ink-2"), callback: v => fmt(v / 1000) + "k" } } } }) });
+  const e = m.filter(x => x.pct_eletricas != null);
+  grafico("g_eletricas", { type: "line", data: { labels: e.map(x => mesCurto(x.mes)), datasets: [{ label: "e-bike", data: e.map(x => x.pct_eletricas * 100), borderColor: css("--cheia"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: .25 }] },
+    options: opcoesBase({ plugins: { ...opcoesBase().plugins, tooltip: { ...opcoesBase().plugins.tooltip, callbacks: { label: c => " " + fmt(c.parsed.y, 1) + "%" } } }, scales: { ...opcoesBase().scales, y: { ...opcoesBase().scales.y, ticks: { color: css("--ink-2"), callback: v => v + "%" } } } }) });
+}
+
+function textoMapa() {
+  const h = (new Date(D.coleta.ultima) - new Date(D.coleta.desde)) / 36e5;
+  document.getElementById("p_mapa").textContent = t("p_mapa")(dataLonga(D.coleta.desde), t("horas_obs")(h));
+  document.getElementById("nota_mapa").textContent = modo === "risco" ? t("nota_risco") : t("nota_fluxos");
+  document.getElementById("seg_dia").style.visibility = modo === "risco" ? "visible" : "hidden";
+}
+
+function legenda() {
+  const el = document.getElementById("legenda");
+  if (modo === "fluxos") { el.innerHTML = `<span><i class="linha" style="background:${css("--fluxo")}"></i>${t("leg_fluxo")}</span>`; return; }
+  el.innerHTML = [["--vazia", "leg_vazia"], ["--vazia-2", "leg_vazia2"], ["--cheia", "leg_cheia"], ["--cheia-2", "leg_cheia2"], ["--neutro", "leg_ok"]]
+    .map(([c, k]) => `<span><i style="background:${css(c)}"></i>${t(k)}</span>`).join("");
+}
+
+function corRisco(v, c) {
+  if (v == null && c == null) return css("--neutro");
+  v = v || 0; c = c || 0;
+  if (v >= .5 && v >= c) return css("--vazia");
+  if (c >= .5) return css("--cheia");
+  if (v >= .1 && v >= c) return css("--vazia-2");
+  if (c >= .1) return css("--cheia-2");
+  return css("--neutro");
+}
+
+function iniciarMapa() {
+  mapa = L.map("mapa", { scrollWheelZoom: false, zoomControl: true }).setView([51.507, -0.11], 12);
+  trocarFundo();
+}
+let fundo = null;
+function trocarFundo() {
+  const escuro = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  if (fundo) mapa.removeLayer(fundo);
+  fundo = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18, className: escuro ? "fundo-escuro" : "fundo-claro",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(mapa);
+}
+
+function desenharMapa() {
+  if (!mapa) return;
+  const h = Number(document.getElementById("hora").value);
+  document.getElementById("hora_valor").textContent = horaTxt(h);
+  if (camada) mapa.removeLayer(camada);
+  camada = L.layerGroup().addTo(mapa);
+  const porTerminal = Object.fromEntries(D.estacoes.map(e => [e.t, e]));
+  const anel = css("--surface");
+  if (modo === "risco") {
+    for (const e of D.estacoes) {
+      const r = D.risco[e.t];
+      const v = r ? r[tipoDia + "_v"][h] : null, c = r ? r[tipoDia + "_c"][h] : null;
+      const m = L.circleMarker([e.la, e.lo], { radius: 5.5, color: anel, weight: 1.5, fillColor: corRisco(v, c), fillOpacity: 1 });
+      m.bindTooltip(v == null && c == null ? t("tip_sem")(e.n, horaTxt(h)) : t("tip_risco")(e.n, pct(v), pct(c), horaTxt(h)), { direction: "top", offset: [0, -4] });
+      m.on("click", () => { perfil(e.t); document.getElementById("ranking").scrollIntoView(); });
+      camada.addLayer(m);
+    }
+  } else {
+    const fl = D.fluxos.filter(f => f.hora === h);
+    const max = Math.max(1, ...fl.map(f => f.viagens_media));
+    for (const e of D.estacoes) camada.addLayer(L.circleMarker([e.la, e.lo], { radius: 2.5, stroke: false, fillColor: css("--neutro"), fillOpacity: .8, interactive: false }));
+    for (const f of fl) {
+      const a = porTerminal[f.origem], b = porTerminal[f.destino];
+      if (!a || !b) continue;
+      const linha = L.polyline([[a.la, a.lo], [b.la, b.lo]], { color: css("--fluxo"), weight: 1.5 + 7 * f.viagens_media / max, opacity: 1, lineCap: "round" });
+      linha.bindTooltip(t("tip_fluxo")(a.n, b.n, fmt(f.viagens_media, 1)), { sticky: true });
+      camada.addLayer(linha);
+      camada.addLayer(L.circleMarker([a.la, a.lo], { radius: 4, color: css("--fluxo"), weight: 2, fillColor: anel, fillOpacity: 1, interactive: false }));
+    }
+  }
+}
+
+function tiles() {
+  const av = document.getElementById("aviso_poucos");
+  av.hidden = D.coleta.horas_coleta >= 72;
+  av.textContent = t("aviso_poucos")(dataLonga(D.coleta.desde), t("horas_obs")(D.coleta.horas_coleta || 0));
+  const r = D.resumo, per = t("periodo")(dataLonga(r.desde), dataLonga(r.ate));
+  document.getElementById("tiles").innerHTML = [
+    [fmt(r.vazias_1h), t("tile_vazias")], [fmt(r.cheias_1h), t("tile_cheias")],
+    [fmt(r.viagens_perdidas), t("tile_perdidas")], [fmt(r.devolucoes_barradas), t("tile_barradas")]
+  ].map(([n, k]) => `<div class="cartao tile"><span class="num">${n}</span><span class="rot">${k} · ${per}</span></div>`).join("");
+}
+
+function maisMovimentada() { return D.estacoes.reduce((a, b) => (b.r12 > a.r12 ? b : a), D.estacoes[0]).t; }
+function tabelaRanking() {
+  const el0 = document.getElementById("t_ranking");
+  if (!D.ranking.length) { el0.innerHTML = `<tbody><tr><td class="muted">${t("sem_ranking")}</td></tr></tbody>`; return; }
+  const max = Math.max(1, ...D.ranking.map(r => r.demanda_perdida));
+  const el = document.getElementById("t_ranking");
+  el.innerHTML = `<thead><tr><th>#</th><th>${t("t_estacao")}</th><th class="n">${t("t_perdidas")}</th><th class="n">${t("t_barradas")}</th><th></th><th class="n">${t("t_horas")}</th></tr></thead><tbody>` +
+    D.ranking.map(r => `<tr tabindex="0" data-t="${r.terminal}"><td>${r.posicao}</td><td>${r.nome}</td><td class="n">${fmt(r.viagens_perdidas, 1)}</td><td class="n">${fmt(r.devolucoes_barradas, 1)}</td>
+      <td><div class="barra" aria-hidden="true"><b style="width:${100 * r.viagens_perdidas / max}%;background:var(--vazia)"></b><b style="width:${100 * r.devolucoes_barradas / max}%;background:var(--cheia)"></b></div></td>
+      <td class="n">${fmt(r.horas_vazia, 1)} / ${fmt(r.horas_cheia, 1)}</td></tr>`).join("") + "</tbody>";
+  el.querySelectorAll("tbody tr").forEach(tr => {
+    tr.addEventListener("click", () => perfil(tr.dataset.t));
+    tr.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); perfil(tr.dataset.t); } });
+  });
+}
+
+function perfil(terminal) {
+  if (!terminal) return;
+  estacaoSel = terminal;
+  const e = D.estacoes.find(x => x.t === terminal), p = D.perfil[terminal];
+  document.getElementById("h_perfil").textContent = t("perfil")(e ? e.n : terminal);
+  document.querySelectorAll("#t_ranking tbody tr").forEach(tr => tr.classList.toggle("sel", tr.dataset.t === terminal));
+  const horas = [...Array(24).keys()].map(horaTxt);
+  grafico("g_perfil", { type: "line", data: { labels: horas, datasets: [
+    { label: t("retiradas"), data: p ? p.ret : [], borderColor: css("--vazia"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: .3 },
+    { label: t("devolucoes"), data: p ? p.dev : [], borderColor: css("--cheia"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: .3 }
+  ] }, options: opcoesBase({ plugins: { ...opcoesBase().plugins, legend: { display: true, position: "top", align: "start", labels: { color: css("--ink-2"), boxWidth: 14, boxHeight: 3 } } } }) });
+}
+
+function pipeline() {
+  const f = D.frescor && D.frescor[0];
+  document.getElementById("k_frescor").textContent = f && f.idade_mediana_min != null ? fmt(f.idade_mediana_min, 0) + " min" : "–";
+}
+
+function saude() {
+  const agora = Date.now(), ult = new Date(D.coleta.ultima), min = (agora - ult) / 6e4;
+  const st = min <= 60 ? "ok" : min <= 180 ? "atencao" : "falha";
+  const dia = D.saude[0] || {};
+  const tfl = D.viagens.ultima_publicacao_tfl ? Math.floor((agora - new Date(D.viagens.ultima_publicacao_tfl)) / 864e5) : null;
+  document.getElementById("tiles_saude").innerHTML = [
+    `<span class="status ${st}"><i aria-hidden="true"></i>${t("st_" + st)}</span><span class="num" style="font-size:1.8rem;display:block">${t("min_atras")(min)}</span><span class="rot">${t("s_ultima")}</span>`,
+    dia.janelas ? `<span class="num">${fmt(dia.janelas_com_sucesso)} / ${fmt(dia.janelas)}</span><span class="rot">${t("s_janelas")}</span>` : `<span class="num">–</span><span class="rot">${t("sem_agendada")}</span>`,
+    `<span class="num">${dia.atraso_mediano_min != null ? fmt(dia.atraso_mediano_min, 1) + " min" : "–"}</span><span class="rot">${t("s_atraso")}</span>`,
+    `<span class="num">${tfl != null ? t("dias")(tfl) : "–"}</span><span class="rot">${t("s_tfl")}</span>`
+  ].map(x => `<div class="cartao tile">${x}</div>`).join("");
+  document.getElementById("t_saude").innerHTML = `<thead><tr><th>${t("t_dia")}</th><th class="n">${t("t_exec")}</th><th class="n">${t("t_falhas")}</th><th class="n">${t("t_janelas")}</th><th class="n">${t("t_atraso")}</th></tr></thead><tbody>` +
+    D.saude.map(s => `<tr><td>${dataLonga(s.dia)}</td><td class="n">${fmt(s.execucoes)}</td><td class="n">${fmt(s.falhas)}</td><td class="n">${s.janelas ? fmt(s.janelas_com_sucesso) + " / " + fmt(s.janelas) : "–"}</td><td class="n">${s.atraso_mediano_min != null ? fmt(s.atraso_mediano_min, 1) + " / " + fmt(s.atraso_p90_min, 1) : "–"}</td></tr>`).join("") + "</tbody>";
+}
+
+// navegação: pontos, progresso, setas, revelar ao rolar
+const caps = [...document.querySelectorAll(".cap")];
+const pontos = document.getElementById("pontos");
+caps.forEach(c => { const a = document.createElement("a"); a.href = "#" + c.id; a.setAttribute("aria-label", c.dataset.titulo); pontos.appendChild(a); });
+const obs = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) {
+    e.target.querySelectorAll(".rev").forEach(r => r.classList.add("visto"));
+    const i = caps.indexOf(e.target);
+    [...pontos.children].forEach((a, j) => a.classList.toggle("ativo", i === j));
+  }
+}), { threshold: .25 });
+caps.forEach(c => obs.observe(c));
+addEventListener("scroll", () => {
+  const p = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);
+  document.querySelector("#progresso span").style.width = (p * 100) + "%";
+}, { passive: true });
+addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "PageDown" && e.key !== "PageUp") return;
+  const atual = caps.findIndex(c => c.getBoundingClientRect().top > -innerHeight / 2);
+  const alvo = caps[Math.min(caps.length - 1, Math.max(0, atual + (e.key === "ArrowDown" || e.key === "PageDown" ? 1 : -1)))];
+  if (alvo) { e.preventDefault(); alvo.scrollIntoView(); }
+});
+
+document.getElementById("idioma").addEventListener("click", () => { lang = lang === "pt" ? "en" : "pt"; salvar("idioma", lang); aplicarIdioma(); });
+document.getElementById("tema").addEventListener("click", () => {
+  const escuro = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = escuro ? "light" : "dark"; salvar("tema", document.documentElement.dataset.theme);
+  if (mapa) trocarFundo();
+  if (D) desenharTudo();
+});
+document.getElementById("hora").addEventListener("input", () => { if (D) desenharMapa(); });
+document.querySelectorAll("[data-modo]").forEach(b => b.addEventListener("click", () => {
+  modo = b.dataset.modo; document.querySelectorAll("[data-modo]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (D) { textoMapa(); legenda(); desenharMapa(); }
+}));
+document.querySelectorAll("[data-dia]").forEach(b => b.addEventListener("click", () => {
+  tipoDia = b.dataset.dia; document.querySelectorAll("[data-dia]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (D) desenharMapa();
+}));
+
+const temaSalvo = ler("tema"); if (temaSalvo) document.documentElement.dataset.theme = temaSalvo;
+lang = ler("idioma") || ((navigator.language || "").toLowerCase().startsWith("pt") ? "pt" : "en");
+fetch("dados/painel.json", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(dados => {
+  D = dados; iniciarMapa(); aplicarIdioma();
+}).catch(err => { console.error(err); document.getElementById("p_mapa").textContent = "Could not load the data (" + err.message + ")."; aplicarIdioma(); });
+</script>
+</body>
+</html>

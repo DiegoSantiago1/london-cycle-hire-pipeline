@@ -26,3 +26,7 @@ dbt/dbt_packages/
 logs/
 
 .DS_Store
+
+# Gerado todo dia pelo job diário (não versionar)
+site/dados/painel.json
+retratos/
