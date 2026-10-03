@@ -3,3 +3,5 @@
 *.png binary
 *.gz binary
 *.tar binary
+# Amostras reais da TfL: guardadas como vieram (CRLF), sem conversão de fim de linha.
+tests/dados/** -text

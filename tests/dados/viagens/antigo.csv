@@ -1,0 +1,5 @@
+Rental Id,Duration,Bike Id,End Date,EndStation Id,EndStation Name,Start Date,StartStation Id,StartStation Name
+115967515,1260,15338,01/01/2022 23:13,310,"Black Prince Road, Vauxhall",01/01/2022 22:52,529,"Manresa Road, Chelsea"
+116017034,720,19861,04/01/2022 19:08,11,"Brunswick Square, Bloomsbury",04/01/2022 18:56,804,"Good's Way, King's Cross"
+115895660,360,19666,29/12/2021 16:34,70,"Calshot Street , King's Cross",29/12/2021 16:28,57,"Guilford Street , Bloomsbury"
+116016563,480,19861,04/01/2022 18:46,804,"Good's Way, King's Cross",04/01/2022 18:38,57,"Guilford Street , Bloomsbury"

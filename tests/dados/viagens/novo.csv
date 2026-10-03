@@ -1,0 +1,5 @@
+"Number","Start date","Start station number","Start station","End date","End station number","End station","Bike number","Bike model","Total duration","Total duration (ms)"
+"125230172","2022-09-18 23:59","001059","Albert Embankment, Vauxhall","2022-09-19 02:11","200222","Danvers Street, West Chelsea","54170","CLASSIC","2h 12m 14s","7934133"
+"125230173","2022-09-18 23:59","002660","Frith Street, Soho","2022-09-19 00:11","001194","Westminster University, Marylebone","50087","CLASSIC","12m 16s","736233"
+"125230174","2022-09-18 23:59","001183","Bramham Gardens, Earl's Court","2022-09-19 00:14","300019","Felsham Road, Putney","54561","CLASSIC","15m 29s","929662"
+"125230175","2022-09-18 23:59","010624","Strata, Elephant & Castle","2022-09-19 00:23","300252","Canada Water Station, Rotherhithe","54324","CLASSIC","23m 31s","1411818"

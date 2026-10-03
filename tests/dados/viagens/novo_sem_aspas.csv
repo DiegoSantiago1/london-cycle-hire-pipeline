@@ -1,0 +1,5 @@
+Number,Start date,Start station number,Start station,End date,End station number,End station,Bike number,Bike model,Total duration,Total duration (ms)
+142043054,14/08/2024 23:59,22165,"Fisherman's Walk West, Canary Wharf",15/08/2024 00:40,200233,"South Quay East, Canary Wharf",59663,CLASSIC,40m 53s,2453526
+142043055,14/08/2024 23:59,22159,"Ebury Bridge, Pimlico",15/08/2024 00:04,965,"Tachbrook Street, Victoria",57811,CLASSIC,4m 54s,294201
+142043056,14/08/2024 23:59,22165,"Fisherman's Walk West, Canary Wharf",15/08/2024 00:47,200004,"Lightermans Road, Millwall",42113,CLASSIC,48m 24s,2904192
+142043057,14/08/2024 23:59,1072,"Waterloo Station 3, Waterloo",15/08/2024 00:07,994,"Tanner Street, Bermondsey",60373,PBSC_EBIKE,8m 18s,498028

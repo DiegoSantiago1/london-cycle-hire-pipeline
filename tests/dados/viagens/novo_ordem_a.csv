@@ -1,0 +1,5 @@
+"Number","Start date","Start station","Start station number","End date","End station","End station number","Bike number","Bike model","Total duration","Total duration (ms)"
+"150414646","2025-07-15 23:59","Broadwick Street, Soho","003489","2025-07-16 00:16","Brunswick Square, Bloomsbury","001022","54815","CLASSIC","17m 1s","1021831"
+"150414647","2025-07-15 23:59","Halford Road, West Kensington","300210","2025-07-16 00:36","Clerkenwell Green, Clerkenwell","001053","57260","CLASSIC","36m 47s","2207917"
+"150414648","2025-07-15 23:59","Saunders Ness Road, Cubitt Town","200022","2025-07-16 00:32","Bermondsey Station, Bermondsey","300253","21433","CLASSIC","33m 14s","1994268"
+"150414649","2025-07-15 23:59","Westferry Circus, Canary Wharf","300228","2025-07-16 00:46","Richmond Way, Shepherd's Bush","200181","62691","PBSC_EBIKE","46m 31s","2791990"

@@ -1,0 +1,5 @@
+Rental Id,Duration,Bike Id,End Date,EndStation Name,Start Date,StartStation Id,StartStation Name
+122342973,180,16835,06/07/2022 15:26,"St. Mary & St. Michael Church, Stepney",06/07/2022 15:23,500,"Ansell House, Stepney"
+122443043,1380,8260,08/07/2022 18:09,"Belgrove Street , King's Cross",08/07/2022 17:46,297,"Geraldine Street, Elephant & Castle"
+122392666,600,17431,07/07/2022 17:00,"Eel Brook Common, Walham Green",07/07/2022 16:50,615,"Finlay Street, Fulham"
+122516692,900,39,10/07/2022 11:47,"Drury Lane, Covent Garden",10/07/2022 11:32,310,"Black Prince Road, Vauxhall"
