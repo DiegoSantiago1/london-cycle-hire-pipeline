@@ -23,6 +23,7 @@ from bicicletas.migracoes import config_alembic
 from .apoio import valor
 
 SCHEMAS = ("bruto", "controle", "agregados")
+SCHEMAS_DBT = ("staging", "intermediario", "marts", "dbt")
 
 
 def falhar_sem_banco(erro: Exception) -> None:
@@ -52,6 +53,9 @@ def banco_teste(config_banco: ConfigBanco) -> ConfigBanco:
     assert config.nome != config_banco.nome  # trava extra: nunca recriar o principal
     alembic = config_alembic(config.url())
     try:
+        # Os schemas do dbt (views sobre o bruto) impediriam o downgrade: saem antes.
+        with conectar(config) as con:
+            con.execute(f"DROP SCHEMA IF EXISTS {', '.join(SCHEMAS_DBT)} CASCADE")
         command.upgrade(alembic, "head")
         command.downgrade(alembic, "base")
         with conectar(config) as con:

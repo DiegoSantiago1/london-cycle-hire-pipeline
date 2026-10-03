@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: agg_demanda_estacao_hora
+    description: Média de retiradas e devoluções por estação, dia da semana (1=seg) e hora.
+    data_tests:
+      - unique_combinacao:
+          arguments:
+            colunas: [terminal, dia_semana, hora]
+      - expressao_verdadeira:
+          arguments:
+            expressao: "dia_semana between 1 and 7 and hora between 0 and 23"
+      - expressao_verdadeira:
+          arguments:
+            expressao: "retiradas_media >= 0 and devolucoes_media >= 0"
+    columns:
+      - name: terminal
+        data_tests:
+          - not_null
+          - corresponde_regex:
+              arguments:
+                regex: '^\d{6}$'
+
+  - name: agg_fluxos_hora
+    data_tests:
+      - unique_combinacao:
+          arguments:
+            colunas: [hora, posicao]
+      - expressao_verdadeira:
+          arguments:
+            expressao: "origem <> destino and viagens_media > 0 and posicao between 1 and 20"
+
+  - name: agg_viagens_mes
+    columns:
+      - name: mes
+        data_tests: [not_null, unique]
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "viagens > 0 and (pct_eletricas is null or pct_eletricas between 0 and 1)"
+
+  - name: agg_estacoes_viagens
+    columns:
+      - name: terminal
+        data_tests: [not_null, unique]
+      - name: nome
+        data_tests: [not_null]

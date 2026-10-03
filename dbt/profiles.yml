@@ -1,0 +1,24 @@
+# Sem segredo aqui: tudo vem das variáveis de ambiente (.env local ou env do Actions).
+bicicletas:
+  target: principal
+  outputs:
+    principal:
+      type: postgres
+      host: "{{ env_var('BICICLETAS_DB_HOST') }}"
+      port: "{{ env_var('BICICLETAS_DB_PORT') | int }}"
+      user: "{{ env_var('BICICLETAS_DB_USER') }}"
+      password: "{{ env_var('BICICLETAS_DB_PASSWORD') }}"
+      dbname: "{{ env_var('BICICLETAS_DB_NAME') }}"
+      schema: dbt
+      threads: 4
+      connect_timeout: 10
+    teste:
+      type: postgres
+      host: "{{ env_var('BICICLETAS_DB_HOST') }}"
+      port: "{{ env_var('BICICLETAS_DB_PORT') | int }}"
+      user: "{{ env_var('BICICLETAS_DB_USER') }}"
+      password: "{{ env_var('BICICLETAS_DB_PASSWORD') }}"
+      dbname: "{{ env_var('BICICLETAS_DB_NAME_TESTE') }}"
+      schema: dbt
+      threads: 4
+      connect_timeout: 10

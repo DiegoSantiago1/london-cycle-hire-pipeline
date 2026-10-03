@@ -1,0 +1,44 @@
+version: 2
+
+sources:
+  - name: bruto
+    description: Dados da TfL como vieram, carregados pelo Python (ver src/bicicletas).
+    schema: bruto
+    tables:
+      - name: viagens
+        description: CSVs de viagens, tudo em texto, com arquivo e linha de origem.
+      - name: retratos
+        description: Uma linha por estação por retrato da API BikePoint.
+        config:
+          loaded_at_field: coletado_em
+          freshness:
+            # Coleta a cada 15 min: 1 h sem retrato já é sinal de problema; 3 h é falha.
+            warn_after: {count: 1, period: hour}
+            error_after: {count: 3, period: hour}
+      - name: execucoes_coleta
+        description: Registro de cada execução da coleta (sucesso ou falha).
+
+  - name: controle
+    schema: controle
+    tables:
+      - name: arquivos_viagens
+        description: Arquivos de viagens carregados, com a data em que a TfL publicou cada um.
+        config:
+          loaded_at_field: publicado_em
+          freshness:
+            # A TfL publica com meses de atraso (medido: o arquivo mais recente, até
+            # 31/05/2026, saiu em 09/06/2026). Mais de 45 dias sem arquivo novo é aviso.
+            warn_after: {count: 45, period: day}
+      - name: arquivos_retratos
+
+  - name: agregados
+    description: >
+      Resumos das viagens exportados do PC para o repositório (dados/agregados/*.csv)
+      e carregados aqui; o job diário usa isto em vez das 41 milhões de viagens.
+    schema: agregados
+    tables:
+      - name: demanda_estacao_hora
+      - name: fluxos_hora
+      - name: viagens_mes
+      - name: estacoes_viagens
+      - name: metadados

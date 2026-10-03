@@ -1,0 +1,64 @@
+version: 2
+
+models:
+  - name: stg_viagens
+    description: Viagens tipadas, os dois formatos da TfL nas mesmas colunas.
+    columns:
+      - name: numero
+        description: Número do aluguel. Medido em 03/10/2026, nenhum repete entre arquivos.
+        data_tests: [not_null, unique]
+      - name: inicio
+        data_tests: [not_null]
+      - name: formato
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['antigo', 'novo']
+      - name: modelo
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['CLASSIC', 'PBSC_EBIKE']
+      - name: estacao_inicio_terminal
+        description: TerminalName (6 dígitos); nulo no formato antigo e no local antigo de estações.
+        data_tests:
+          - corresponde_regex:
+              arguments:
+                regex: '^\d{6}$'
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "formato = 'antigo' or estacao_inicio_terminal is not null or local_antigo_inicio"
+      - expressao_verdadeira:
+          arguments:
+            expressao: "duracao_s is null or duracao_s >= 0"
+
+  - name: stg_retratos
+    columns:
+      - name: estacao_id
+        data_tests: [not_null]
+      - name: coletado_em
+        data_tests: [not_null]
+      - name: bicicletas
+        data_tests: [not_null]
+    data_tests:
+      - unique_combinacao:
+          arguments:
+            colunas: [arquivo, estacao_id]
+      - expressao_verdadeira:
+          arguments:
+            expressao: "bicicletas >= 0 and vagas_livres >= 0 and docas >= 0"
+      - expressao_verdadeira:
+          arguments:
+            expressao: "classicas + eletricas = bicicletas"
+      - expressao_verdadeira:
+          arguments:
+            expressao: "lat between 51.2 and 51.8 and lon between -0.6 and 0.4"
+
+  - name: stg_execucoes_coleta
+    columns:
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['sucesso', 'falha']

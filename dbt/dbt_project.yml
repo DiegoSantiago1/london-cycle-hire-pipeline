@@ -1,0 +1,35 @@
+# Transformações do pipeline (ELT): o Python carrega o bruto; o dbt transforma em SQL,
+# com testes e linhagem. Rodar sempre por `python -m bicicletas.dbt_rodar ...`, que lê o
+# .env e aponta para o profiles.yml desta pasta.
+name: bicicletas
+version: "1.0.0"
+profile: bicicletas
+config-version: 2
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+target-path: "target"
+clean-targets: ["target", "logs"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  bicicletas:
+    # Dois ritmos (D16): "viagens" roda no PC (dezenas de milhões de linhas);
+    # "diario" roda todo dia no GitHub Actions com o banco temporário.
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediario:
+      +schema: intermediario
+      +materialized: table
+    marts:
+      +schema: marts
+      +materialized: table
+
+data_tests:
+  bicicletas:
+    +severity: error
