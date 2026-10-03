@@ -25,7 +25,20 @@ GH_FALSO = r"""#!/usr/bin/env bash
 set -euo pipefail
 echo "$*" >> "$GH_ESTADO/chamadas.log"
 [ "$1" = "release" ] || exit 2
+if [ "$2" = "list" ]; then
+  for d in "$GH_ESTADO"/*/; do [ -d "$d" ] && basename "$d"; done
+  exit 0
+fi
 acao="$2"; tag="$3"; shift 3
+# Falha simulada: os primeiros $GH_FALHAS downloads respondem "HTTP 500".
+if [ "$acao" = "download" ] && [ "${GH_FALHAS:-0}" -gt 0 ]; then
+  n=$(cat "$GH_ESTADO/.falhas" 2>/dev/null || echo 0)
+  if [ "$n" -lt "$GH_FALHAS" ]; then
+    echo $((n + 1)) > "$GH_ESTADO/.falhas"
+    echo "HTTP 500" >&2
+    exit 1
+  fi
+fi
 case "$acao" in
   view)
     [ -d "$GH_ESTADO/$tag" ] || exit 1
@@ -86,6 +99,7 @@ def ambiente(tmp_path: Path) -> dict[str, str]:
         "PYTHON": _posix(sys.executable),
         # No Windows o Python escreve em cp1252 quando a saída é um pipe; no Linux já é UTF-8.
         "PYTHONUTF8": "1",
+        "ESPERA": "0",  # sem espera entre tentativas nos testes
     }
 
 
@@ -235,6 +249,24 @@ def test_baixa_pacote_quando_existe_e_soltos_quando_nao(
         ]
     )
     assert "sem release" in r.stderr  # anteontem não teve coleta
+
+
+def test_erro_passageiro_do_github_tenta_de_novo(tmp_path: Path, ambiente: dict[str, str]) -> None:
+    # Medido no job diário: a API respondeu HTTP 500 num download. Duas falhas seguidas
+    # ainda terminam bem (3 tentativas); três falhas derrubam o script.
+    hoje = datetime.now(UTC).date().isoformat()
+    _release_com_coleta(ambiente, hoje)
+    r = _rodar(
+        "baixar_retratos.sh", "1", _posix(tmp_path / "a"), env={**ambiente, "GH_FALHAS": "2"}
+    )
+    assert r.returncode == 0, r.stderr
+    assert len(list((tmp_path / "a").iterdir())) == 2
+    assert r.stderr.count("tentativa") == 2
+    (_estado(ambiente) / ".falhas").unlink()
+    r = _rodar(
+        "baixar_retratos.sh", "1", _posix(tmp_path / "b"), env={**ambiente, "GH_FALHAS": "3"}
+    )
+    assert r.returncode != 0
 
 
 @pytest.mark.parametrize("dias", ["0", "abc", "401", "-1"])

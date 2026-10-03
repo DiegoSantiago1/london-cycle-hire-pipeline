@@ -16,6 +16,7 @@ on:
       - "dados/agregados/**"
       - "src/bicicletas/**"
       - "db/**"
+      - "scripts/**"
       - ".github/workflows/diario.yml"
 
 permissions:
