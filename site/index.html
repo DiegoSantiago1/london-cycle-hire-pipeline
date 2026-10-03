@@ -328,7 +328,7 @@ const TXT = {
 };
 const DIN = {
   en: {
-    chip_viagens: n => `<b>${n}</b> trips since 2022`, chip_estacoes: n => `<b>${n}</b> stations every 15 min`,
+    chip_viagens: (n, a) => `<b>${n}</b> trips in ${a} TfL files`, chip_estacoes: n => `<b>${n}</b> stations every 15 min`,
     chip_atualiza: d => `updated <b>${d}</b>`,
     nota_tendencia: (a, b) => `Complete months, ${a} to ${b}. In Sep 2022 TfL changed its data system (new file format): two days are missing and the level is ~25% lower afterwards. The source does not say whether that is demand or a change in what is counted, so levels across the line are not directly comparable.`,
     troca: "new TfL data system", incompletos: n => `${n} day(s) missing in the files`,
@@ -356,7 +356,7 @@ const DIN = {
     sem_ranking: "No lost demand estimated yet: there are not enough live snapshots in the period."
   },
   pt: {
-    chip_viagens: n => `<b>${n}</b> viagens desde 2022`, chip_estacoes: n => `<b>${n}</b> estações a cada 15 min`,
+    chip_viagens: (n, a) => `<b>${n}</b> viagens em ${a} arquivos da TfL`, chip_estacoes: n => `<b>${n}</b> estações a cada 15 min`,
     chip_atualiza: d => `atualizado em <b>${d}</b>`,
     nota_tendencia: (a, b) => `Meses completos, de ${a} a ${b}. Em set/2022 a TfL trocou o sistema de dados (formato novo dos arquivos): faltam dois dias e o nível fica ~25% menor depois. A fonte não diz se é demanda ou mudança no que é contado, então os níveis antes e depois da linha não são diretamente comparáveis.`,
     troca: "novo sistema de dados da TfL", incompletos: n => `${n} dia(s) faltando nos arquivos`,
@@ -396,6 +396,8 @@ const dataLonga = s => new Date(s.length === 10 ? s + "T12:00:00Z" : s).toLocale
 const mesCurto = s => new Date(s + "T12:00:00Z").toLocaleDateString(lang === "pt" ? "pt-BR" : "en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
 const horaTxt = h => String(h).padStart(2, "0") + ":00";
 const t = k => DIN[lang][k];
+// Nomes de estação vêm da API da TfL (dado de terceiro): sempre escapados antes de virar HTML.
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 function aplicarIdioma() {
   document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
@@ -422,7 +424,7 @@ function desenharTudo() {
 function chips() {
   const v = D.viagens || {};
   document.getElementById("chips").innerHTML = [
-    t("chip_viagens")(fmt(Number(v.viagens_total) / 1e6, 1) + (lang === "pt" ? " mi" : "M")),
+    t("chip_viagens")(fmt(Number(v.viagens_total) / 1e6, 1) + (lang === "pt" ? " mi" : "M"), fmt(Number(v.arquivos))),
     t("chip_estacoes")(fmt(D.estacoes.length)),
     t("chip_atualiza")(dataLonga(D.gerado_em))
   ].map(c => `<span class="chip">${c}</span>`).join("");
@@ -512,7 +514,7 @@ function desenharMapa() {
       const r = D.risco[e.t];
       const v = r ? r[tipoDia + "_v"][h] : null, c = r ? r[tipoDia + "_c"][h] : null;
       const m = L.circleMarker([e.la, e.lo], { radius: 5.5, color: anel, weight: 1.5, fillColor: corRisco(v, c), fillOpacity: 1 });
-      m.bindTooltip(v == null && c == null ? t("tip_sem")(e.n, horaTxt(h)) : t("tip_risco")(e.n, pct(v), pct(c), horaTxt(h)), { direction: "top", offset: [0, -4] });
+      m.bindTooltip(v == null && c == null ? t("tip_sem")(esc(e.n), horaTxt(h)) : t("tip_risco")(esc(e.n), pct(v), pct(c), horaTxt(h)), { direction: "top", offset: [0, -4] });
       m.on("click", () => { perfil(e.t); document.getElementById("ranking").scrollIntoView(); });
       camada.addLayer(m);
     }
@@ -524,7 +526,7 @@ function desenharMapa() {
       const a = porTerminal[f.origem], b = porTerminal[f.destino];
       if (!a || !b) continue;
       const linha = L.polyline([[a.la, a.lo], [b.la, b.lo]], { color: css("--fluxo"), weight: 1.5 + 7 * f.viagens_media / max, opacity: 1, lineCap: "round" });
-      linha.bindTooltip(t("tip_fluxo")(a.n, b.n, fmt(f.viagens_media, 1)), { sticky: true });
+      linha.bindTooltip(t("tip_fluxo")(esc(a.n), esc(b.n), fmt(f.viagens_media, 1)), { sticky: true });
       camada.addLayer(linha);
       camada.addLayer(L.circleMarker([a.la, a.lo], { radius: 4, color: css("--fluxo"), weight: 2, fillColor: anel, fillOpacity: 1, interactive: false }));
     }
@@ -549,7 +551,7 @@ function tabelaRanking() {
   const max = Math.max(1, ...D.ranking.map(r => r.demanda_perdida));
   const el = document.getElementById("t_ranking");
   el.innerHTML = `<thead><tr><th>#</th><th>${t("t_estacao")}</th><th class="n">${t("t_perdidas")}</th><th class="n">${t("t_barradas")}</th><th></th><th class="n">${t("t_horas")}</th></tr></thead><tbody>` +
-    D.ranking.map(r => `<tr tabindex="0" data-t="${r.terminal}"><td>${r.posicao}</td><td>${r.nome}</td><td class="n">${fmt(r.viagens_perdidas, 1)}</td><td class="n">${fmt(r.devolucoes_barradas, 1)}</td>
+    D.ranking.map(r => `<tr tabindex="0" data-t="${esc(r.terminal)}"><td>${r.posicao}</td><td>${esc(r.nome)}</td><td class="n">${fmt(r.viagens_perdidas, 1)}</td><td class="n">${fmt(r.devolucoes_barradas, 1)}</td>
       <td><div class="barra" aria-hidden="true"><b style="width:${100 * r.viagens_perdidas / max}%;background:var(--vazia)"></b><b style="width:${100 * r.devolucoes_barradas / max}%;background:var(--cheia)"></b></div></td>
       <td class="n">${fmt(r.horas_vazia, 1)} / ${fmt(r.horas_cheia, 1)}</td></tr>`).join("") + "</tbody>";
   el.querySelectorAll("tbody tr").forEach(tr => {

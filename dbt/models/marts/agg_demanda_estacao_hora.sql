@@ -1,20 +1,22 @@
 {#
   Demanda típica por estação, dia da semana e hora (horário de Londres): média de
-  retiradas e de devoluções por hora, na janela de 12 meses. É o "quanto costuma sair
-  e chegar aqui" que, multiplicado pelo tempo em que a estação ficou vazia ou cheia,
-  dá a demanda perdida estimada (D17).
+  retiradas e de devoluções por hora, nos dias completos da janela de 12 meses. É o
+  "quanto costuma sair e chegar aqui" que, multiplicado pelo tempo em que a estação
+  ficou vazia ou cheia, dá a demanda perdida estimada (D17). Dias incompletos ficam de
+  fora do numerador e do denominador (D42).
 #}
 {{ config(tags=['viagens']) }}
 
-with janela as (
-    select * from {{ ref('int_janela_viagens') }}
+with dias as (
+    select dia_semana, count(*) as n_dias
+    from {{ ref('int_dias_validos') }}
+    group by 1
 ),
 
-dias as (
-    -- quantas segundas, terças... a janela tem (52 ou 53 de cada)
-    select extract(isodow from d)::int as dia_semana, count(*) as n_dias
-    from janela, generate_series(inicio_janela, fim_janela - 1, interval '1 day') as d
-    group by 1
+viagens as (
+    select v.*
+    from {{ ref('stg_viagens') }} v
+    join {{ ref('int_dias_validos') }} d on d.dia = v.inicio_local::date
 ),
 
 retiradas as (
@@ -23,9 +25,8 @@ retiradas as (
         extract(isodow from inicio_local)::int as dia_semana,
         extract(hour from inicio_local)::int as hora,
         count(*) as n
-    from {{ ref('stg_viagens') }}, janela
-    where inicio_local >= inicio_janela and inicio_local < fim_janela
-      and estacao_inicio_terminal is not null
+    from viagens
+    where estacao_inicio_terminal is not null
     group by 1, 2, 3
 ),
 
@@ -35,9 +36,8 @@ devolucoes as (
         extract(isodow from fim at time zone 'Europe/London')::int as dia_semana,
         extract(hour from fim at time zone 'Europe/London')::int as hora,
         count(*) as n
-    from {{ ref('stg_viagens') }}, janela
-    where inicio_local >= inicio_janela and inicio_local < fim_janela
-      and estacao_fim_terminal is not null and fim is not null
+    from viagens
+    where estacao_fim_terminal is not null and fim is not null
     group by 1, 2, 3
 ),
 
