@@ -1,0 +1,28 @@
+# Contexto pessoal e de carreira (não vai para o GitHub)
+CLAUDE.md
+
+# Seção de aprendizado: preparação pessoal para entrevista (não vai para o GitHub)
+docs/APRENDIZADO.md
+
+# Segredos e ambiente
+.env
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Dados: o bruto das viagens fica FORA desta pasta (variável BICICLETAS_DADOS, veja
+# docs/DECISOES.md D15); esta linha só protege contra uma cópia acidental aqui dentro.
+data/
+saida/
+
+# dbt: artefatos gerados a cada execução
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+logs/
+
+.DS_Store

@@ -1,0 +1,5 @@
+# Ferramentas de desenvolvimento: testes, lint/formatação e verificação de tipos.
+-r requirements.txt
+pytest==9.1.1
+ruff==0.16.10
+mypy==2.4.0

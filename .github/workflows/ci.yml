@@ -1,0 +1,66 @@
+# Integração contínua: lint, tipos e testes (inclusive os de banco) a cada push.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      BICICLETAS_DB_HOST: 127.0.0.1
+      BICICLETAS_DB_PORT: "5432"
+      BICICLETAS_DB_NAME: bicicletas
+      BICICLETAS_DB_NAME_TESTE: bicicletas_teste
+      BICICLETAS_DB_USER: bicicletas
+      BICICLETAS_DB_PASSWORD: senha_so_do_ci
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      # O mesmo bootstrap.sql do ambiente local (usuário sem privilégios extras, fuso,
+      # REVOKE do PUBLIC), com as variáveis passadas pelo -v do psql.
+      - name: Criar usuário e bancos
+        env:
+          PGPASSWORD: postgres
+        run: >
+          psql -X -h 127.0.0.1 -U postgres -d postgres
+          -v usuario="$BICICLETAS_DB_USER" -v senha="$BICICLETAS_DB_PASSWORD"
+          -v banco="$BICICLETAS_DB_NAME" -v banco_teste="$BICICLETAS_DB_NAME_TESTE"
+          -f db/bootstrap.sql
+
+      - name: Formatação e lint
+        run: |
+          ruff format --check .
+          ruff check .
+
+      - name: Tipos
+        run: mypy
+
+      - name: Testes
+        run: pytest

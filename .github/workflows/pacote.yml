@@ -1,0 +1,43 @@
+# Pacote diário: junta os retratos de ontem (UTC) num .tar conferido por hash e anexa
+# na mesma release. O job diário baixa 28 pacotes em vez de ~2.700 arquivos.
+name: pacote-diario
+
+on:
+  schedule:
+    # 03:17 UTC: o dia anterior já terminou há mais de 3 h, inclusive coletas atrasadas.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dia:
+        description: "Dia a empacotar (AAAA-MM-DD, UTC). Vazio = ontem."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pacote
+  cancel-in-progress: false
+
+jobs:
+  empacotar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Montar e publicar o pacote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Entrada do usuário vai por variável de ambiente, nunca direto no script
+          # (evita injeção de comando pelo campo do formulário).
+          DIA_INFORMADO: ${{ inputs.dia }}
+          PYTHONPATH: src
+        run: bash scripts/empacotar_dia.sh "${DIA_INFORMADO:-$(date -u -d yesterday +%F)}"

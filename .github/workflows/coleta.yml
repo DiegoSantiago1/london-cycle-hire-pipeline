@@ -1,0 +1,46 @@
+# Coleta ao vivo: um retrato da API BikePoint da TfL a cada 15 minutos, guardado
+# intocado numa release do GitHub por dia (data lake provisório até a nuvem, D11).
+name: coleta
+
+on:
+  schedule:
+    # Minutos 7, 22, 37 e 52 (UTC): fora da virada da hora, quando o GitHub mais atrasa
+    # execuções agendadas (docs/DECISOES.md D13).
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # criar a release do dia e anexar os arquivos
+
+# Uma coleta por vez: duas execuções criando a mesma release ao mesmo tempo dariam erro.
+concurrency:
+  group: coleta
+  cancel-in-progress: false
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # A coleta usa só a biblioteca padrão: nada de pip install, a execução fica rápida.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Coletar retrato
+        env:
+          PYTHONPATH: src
+        run: python -m bicicletas.coleta_api --destino saida
+
+      # always(): o registro da execução sobe mesmo quando a coleta falha. O job continua
+      # vermelho (a etapa anterior falhou) e o GitHub avisa por e-mail.
+      - name: Publicar na release do dia
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/publicar_release.sh saida
