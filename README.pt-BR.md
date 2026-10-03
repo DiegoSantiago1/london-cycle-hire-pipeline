@@ -11,7 +11,7 @@
 
 Uma página interativa em português e inglês que abre no navegador, sem instalar nada: um mapa que você move hora a hora, as estações ordenadas pelas viagens que devem perder e a saúde do próprio pipeline, ao vivo.
 
-[English](README.md) · [Plano](docs/PLAN.md) · [Decisões e medições (D1–D41)](docs/DECISOES.md)
+[English](README.md) · [Plano](docs/PLAN.md) · [Decisões e medições (D1–D43)](docs/DECISOES.md)
 
 ![Fluxos da manhã: às 8h as maiores ligações saem de Waterloo para a City](docs/img/mapa_fluxos.png)
 
@@ -57,7 +57,7 @@ O desafio de engenharia é que **o dado não para de chegar**: carga incremental
 | **Coleta** (`src/bicicletas/coleta_api.py`) | Só biblioteca padrão do Python, escrita como handler no estilo serverless (`lambda_handler(event, context)`), para poder ir para um agendador gerenciado sem mudar. Três tentativas com espera crescente; resposta sem a forma de BikePoint (página HTML de erro, lista vazia, campo faltando) é execução com falha e nunca entra no bruto. Cada execução grava um registro (sucesso ou falha, quem disparou, número de estações, SHA-256): o GitHub apaga o histórico em 90 dias, o registro fica. |
 | **Bruto** | Cada resposta guardada byte a byte (gzip com `mtime=0`: o mesmo conteúdo dá o mesmo hash), chaves no formato do S3 (`bruto/bikepoint/data=AAAA-MM-DD/...`), nunca sobrescrita. Um `.tar` diário determinístico com manifesto de hashes faz o job diário baixar 28 arquivos em vez de ~2.700. |
 | **Arquivos de viagens** (`viagens_download.py`, `viagens_carga.py`) | Baixados por ETag com recibo (tamanho, SHA-256, data de publicação), num arquivo `.parcial` trocado só depois de conferido. Carregados **pelo nome da coluna**, nunca pela posição; coluna desconhecida, coluna faltando ou linha com número errado de campos recusa o arquivo. Uma transação por arquivo: apaga as linhas daquele arquivo, insere, registra a versão. Rodar duas vezes não duplica; arquivo republicado substitui a versão anterior; falha no meio deixa a versão anterior intacta. |
-| **dbt** (`dbt/`) | `staging` (tipos, os dois formatos unificados) → `intermediario` → `marts` (ocupação por estação e hora, demanda perdida, ranking, fluxos, saúde): 16 modelos com 47 testes de dados e source freshness (retratos: aviso com 1 h, erro com 3 h). |
+| **dbt** (`dbt/`) | `staging` (tipos, os dois formatos unificados) → `intermediario` → `marts` (ocupação por estação e hora, demanda perdida, ranking, fluxos, saúde): 17 modelos com 47 testes de dados e source freshness (retratos: aviso com 1 h, erro com 3 h). |
 | **Página** (`site/`) | Exportada só depois que o `dbt build` passa; teste falhando mantém a página de ontem. Coleta atrasada não bloqueia a página: ela mostra a saúde em vermelho. |
 
 ## Qualidade dos dados: medir antes de decidir
