@@ -261,7 +261,7 @@
       <div class="grade g3 rev">
         <div class="cartao"><span class="num" style="font-size:2.2rem" id="k_variantes">6</span><h3 data-i18n="f1">header variants in the trip files</h3><p class="muted" data-i18n="f1s">Columns in different orders, a file without quotes and with dates like 14/08/2024, station numbers with the leading zeros stripped by Excel. Read by name, never by position; an unknown column stops the load.</p></div>
         <div class="cartao"><span class="num" style="font-size:2.2rem">0</span><h3 data-i18n="f2">duplicated trips across 148 files</h3><p class="muted" data-i18n="f2s">File names overlap on some days, so duplicates were expected. Measured before removing anything: none. A uniqueness test now guards it.</p></div>
-        <div class="cartao"><span class="num" style="font-size:2.2rem" id="k_frescor">–</span><h3 data-i18n="f3">median age of the API data when collected</h3><p class="muted" data-i18n="f3s">The API serves a cache: consecutive snapshots can be identical. Occupancy uses the time each station was really updated.</p></div>
+        <div class="cartao"><span class="num" style="font-size:2.2rem" id="k_frescor">–</span><h3 data-i18n="f3">median age of the API data when collected</h3><p class="muted" data-i18n="f3s">The API serves a cache, so consecutive snapshots can be identical. Occupancy is measured at collection time; how stale the data is gets measured every day and shown here.</p></div>
       </div>
     </div>
   </section>
@@ -320,7 +320,7 @@ const TXT = {
     f2: "viagens repetidas entre 148 arquivos",
     f2s: "Os nomes dos arquivos se sobrepõem em alguns dias, então se esperavam repetições. Medido antes de apagar qualquer coisa: nenhuma. Um teste de unicidade agora protege a regra.",
     f3: "idade mediana do dado da API na coleta",
-    f3s: "A API serve de um cache: retratos seguidos podem ser idênticos. A ocupação usa o horário em que cada estação foi atualizada de verdade.",
+    f3s: "A API serve de um cache, então retratos seguidos podem ser idênticos. A ocupação é medida no instante da coleta; a idade do dado é medida todo dia e mostrada aqui.",
     o_saude: "Saúde do pipeline · ao vivo", h_saude: "Como saber que o dado de hoje chegou?",
     p_saude: "Cada execução grava um registro, de sucesso ou de falha. As execuções agendadas são comparadas com o horário em que deveriam começar: esse atraso, medido execução a execução, é a evidência para tirar a coleta do cron do GitHub Actions.",
     rodape: "Contém dados da Transport for London usados conforme os termos de dados de transporte da TfL (baseados na Open Government Licence v2.0). Sem vínculo com a TfL nem endosso dela. Mapa © colaboradores do OpenStreetMap."
