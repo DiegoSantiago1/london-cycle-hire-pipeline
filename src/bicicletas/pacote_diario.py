@@ -145,13 +145,26 @@ def verificar_pacote(pacote: Path, manifesto: dict[str, Any]) -> None:
         raise ErroPacote("o pacote não confere com o manifesto")
 
 
-def main(argumentos: list[str] | None = None) -> int:
+def conferir_dia_encerrado(dia: date, hoje: date) -> None:
+    """Só empacota dia que já terminou (UTC).
+
+    Um pacote de hoje sairia incompleto, e o job das 03:17 o veria como "já existe" e
+    pularia: o pacote daquele dia ficaria sem as coletas do resto do dia.
+    """
+    if dia >= hoje:
+        raise ErroPacote(
+            f"{dia} ainda não terminou em UTC (hoje é {hoje}): pacote sairia incompleto"
+        )
+
+
+def main(argumentos: list[str] | None = None, hoje: date | None = None) -> int:
     parser = argparse.ArgumentParser(description="Empacota os retratos de um dia (UTC).")
     parser.add_argument("--dia", required=True, type=date.fromisoformat)
     parser.add_argument("--pasta", required=True, type=Path)
     parser.add_argument("--saida", required=True, type=Path)
     args = parser.parse_args(argumentos)
     try:
+        conferir_dia_encerrado(args.dia, hoje or datetime.now(UTC).date())
         manifesto = montar_pacote(args.pasta, args.dia, args.saida)
     except ErroPacote as erro:
         print(f"ERRO no pacote: {erro}", file=sys.stderr)

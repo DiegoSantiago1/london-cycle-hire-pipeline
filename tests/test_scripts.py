@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -163,33 +164,45 @@ def test_particao_fora_do_padrao_e_recusada(tmp_path: Path, ambiente: dict[str, 
 
 
 # ---------------------------------------------------------------- empacotar_dia.sh
-def _release_com_coleta(ambiente: dict[str, str]) -> Path:
-    release = _estado(ambiente) / "bruto-bikepoint-2026-10-03"
+# Dia fixo no passado: o pacote recusa dia que ainda não terminou, e o teste não pode
+# depender da data em que roda.
+DIA_PASSADO = "2026-09-30"
+
+
+def _release_com_coleta(ambiente: dict[str, str], dia: str = DIA_PASSADO) -> Path:
+    release = _estado(ambiente) / f"bruto-bikepoint-{dia}"
     release.mkdir()
-    (release / "bikepoint_2026-10-03T17-22-05Z.json.gz").write_bytes(
-        gzip.compress(AMOSTRA, mtime=0)
-    )
-    (release / "execucao_2026-10-03T17-22-05Z.json").write_bytes(b'{"status": "sucesso"}')
+    (release / f"bikepoint_{dia}T17-22-05Z.json.gz").write_bytes(gzip.compress(AMOSTRA, mtime=0))
+    (release / f"execucao_{dia}T17-22-05Z.json").write_bytes(b'{"status": "sucesso"}')
     return release
 
 
 def test_empacota_e_anexa_na_release(ambiente: dict[str, str]) -> None:
     release = _release_com_coleta(ambiente)
-    r = _rodar("empacotar_dia.sh", "2026-10-03", env=ambiente)
+    r = _rodar("empacotar_dia.sh", DIA_PASSADO, env=ambiente)
     assert r.returncode == 0, r.stderr + r.stdout
-    assert (release / "pacote_bikepoint_2026-10-03.tar").exists()
+    assert (release / f"pacote_bikepoint_{DIA_PASSADO}.tar").exists()
 
 
 def test_empacotar_de_novo_nao_faz_nada(ambiente: dict[str, str]) -> None:
     _release_com_coleta(ambiente)
-    assert _rodar("empacotar_dia.sh", "2026-10-03", env=ambiente).returncode == 0
-    r = _rodar("empacotar_dia.sh", "2026-10-03", env=ambiente)
+    assert _rodar("empacotar_dia.sh", DIA_PASSADO, env=ambiente).returncode == 0
+    r = _rodar("empacotar_dia.sh", DIA_PASSADO, env=ambiente)
     assert r.returncode == 0
     assert "Nada a fazer" in r.stdout
 
 
+def test_dia_de_hoje_nao_e_empacotado(ambiente: dict[str, str]) -> None:
+    hoje = datetime.now(UTC).date().isoformat()
+    release = _release_com_coleta(ambiente, hoje)
+    r = _rodar("empacotar_dia.sh", hoje, env=ambiente)
+    assert r.returncode != 0
+    assert "ainda não terminou" in r.stderr
+    assert not (release / f"pacote_bikepoint_{hoje}.tar").exists()
+
+
 def test_dia_sem_release_falha(ambiente: dict[str, str]) -> None:
-    r = _rodar("empacotar_dia.sh", "2026-10-03", env=ambiente)
+    r = _rodar("empacotar_dia.sh", DIA_PASSADO, env=ambiente)
     assert r.returncode != 0
     assert "não existe" in r.stderr
 

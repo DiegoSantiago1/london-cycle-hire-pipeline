@@ -21,6 +21,7 @@ from bicicletas.pacote_diario import (
 from .test_coleta_api import AMOSTRA
 
 DIA = date(2026, 10, 3)
+AMANHA = date(2026, 10, 4)
 
 
 def _retrato(pasta: Path, hora: str, conteudo: bytes = AMOSTRA) -> Path:
@@ -142,10 +143,16 @@ def test_verificacao_pega_manifesto_que_nao_confere(pasta: Path, tmp_path: Path)
 
 def test_main(pasta: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     saida = tmp_path / "pacote.tar"
-    assert main(["--dia", "2026-10-03", "--pasta", str(pasta), "--saida", str(saida)]) == 0
+    assert (
+        main(["--dia", "2026-10-03", "--pasta", str(pasta), "--saida", str(saida)], hoje=AMANHA)
+        == 0
+    )
     assert "2 retratos" in capsys.readouterr().out
     assert (
-        main(["--dia", "2026-10-10", "--pasta", str(pasta), "--saida", str(tmp_path / "x.tar")])
+        main(
+            ["--dia", "2026-09-20", "--pasta", str(pasta), "--saida", str(tmp_path / "x.tar")],
+            hoje=AMANHA,
+        )
         == 1
     )
 
@@ -170,5 +177,21 @@ def test_main_com_pacote_existente(
 ) -> None:
     saida = tmp_path / "pacote.tar"
     saida.write_bytes(b"x")
-    assert main(["--dia", "2026-10-03", "--pasta", str(pasta), "--saida", str(saida)]) == 1
+    assert (
+        main(["--dia", "2026-10-03", "--pasta", str(pasta), "--saida", str(saida)], hoje=AMANHA)
+        == 1
+    )
     assert "já existe" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("hoje", [date(2026, 10, 3), date(2026, 10, 1)])
+def test_dia_que_ainda_nao_terminou_e_recusado(
+    pasta: Path, tmp_path: Path, hoje: date, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Hoje (pacote sairia incompleto) e dia no futuro: os dois recusados, sem criar arquivo.
+    saida = tmp_path / "pacote.tar"
+    assert (
+        main(["--dia", "2026-10-03", "--pasta", str(pasta), "--saida", str(saida)], hoje=hoje) == 1
+    )
+    assert "ainda não terminou" in capsys.readouterr().err
+    assert not saida.exists()
