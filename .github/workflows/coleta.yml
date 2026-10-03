@@ -5,7 +5,8 @@ name: coleta
 on:
   schedule:
     # Minutos 7, 22, 37 e 52 (UTC): fora da virada da hora, quando o GitHub mais atrasa
-    # execuções agendadas (docs/DECISOES.md D13).
+    # execuções agendadas (docs/DECISOES.md D13). Execuções manuais (workflow_dispatch)
+    # ficam de fora da medição de atraso.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
