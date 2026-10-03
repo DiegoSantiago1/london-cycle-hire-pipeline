@@ -1,0 +1,70 @@
+version: 2
+
+models:
+  - name: int_ocupacao_intervalos
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "fim > inicio and fim - inicio <= interval '30 minutes'"
+
+  - name: fct_ocupacao_hora
+    description: Minutos observados, vazia e cheia por estação e hora de Londres.
+    data_tests:
+      - unique_combinacao:
+          arguments:
+            colunas: [estacao_id, hora_utc]
+      - expressao_verdadeira:
+          arguments:
+            # Uma hora tem no máximo 60 minutos; vazia e cheia cabem no observado.
+            expressao: >
+              minutos_observados > 0 and minutos_observados <= 60.01
+              and minutos_vazia <= minutos_observados + 0.01
+              and minutos_cheia <= minutos_observados + 0.01
+      - expressao_verdadeira:
+          arguments:
+            expressao: "hora between 0 and 23 and dia_semana between 1 and 7"
+
+  - name: dim_estacoes
+    columns:
+      - name: estacao_id
+        data_tests: [not_null, unique]
+      - name: terminal
+        data_tests: [not_null]
+
+  - name: mart_demanda_perdida
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "viagens_perdidas >= 0 and devolucoes_barradas >= 0"
+
+  - name: mart_ranking_estacoes
+    columns:
+      - name: estacao_id
+        data_tests: [not_null, unique]
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "horas_vazia <= horas_observadas + 0.1 and horas_cheia <= horas_observadas + 0.1"
+
+  - name: mart_risco_hora
+    data_tests:
+      - unique_combinacao:
+          arguments:
+            colunas: [estacao_id, tipo_dia, hora]
+      - expressao_verdadeira:
+          arguments:
+            expressao: "pct_vazia between 0 and 1.0001 and pct_cheia between 0 and 1.0001"
+
+  - name: mart_saude_coleta
+    columns:
+      - name: dia
+        data_tests: [not_null, unique]
+    data_tests:
+      - expressao_verdadeira:
+          arguments:
+            expressao: "janelas_com_sucesso <= janelas_com_execucao and janelas_com_execucao <= janelas"
+
+  - name: mart_frescor_api
+    columns:
+      - name: dia
+        data_tests: [not_null, unique]
