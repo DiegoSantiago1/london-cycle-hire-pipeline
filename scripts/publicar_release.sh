@@ -28,8 +28,9 @@ for arquivo in "${arquivos[@]}"; do
   fi
   tag="bruto-bikepoint-$dia"
   if ! "$GH" release view "$tag" >/dev/null 2>&1; then
-    # --latest=false: a release de dados não deve aparecer como "Latest" do projeto.
-    "$GH" release create "$tag" --latest=false \
+    # --prerelease: release de dados nunca vira a "Latest" do projeto. Só --latest=false
+    # não basta: medido em 03/10/2026, a primeira release apareceu como Latest mesmo assim.
+    "$GH" release create "$tag" --prerelease --latest=false \
       --title "Bruto BikePoint $dia (UTC)" \
       --notes "Retratos da API BikePoint da TfL coletados a cada 15 minutos em $dia (UTC), guardados como vieram, e o registro de cada execução. Powered by TfL Open Data."
   fi

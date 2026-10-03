@@ -127,7 +127,7 @@ def test_publica_criando_a_release_do_dia(tmp_path: Path, ambiente: dict[str, st
     ]
     log = (_estado(ambiente) / "chamadas.log").read_text(encoding="utf-8")
     assert log.count("release create") == 1  # criada uma vez, mesmo com dois arquivos
-    assert "--latest=false" in log
+    assert "--prerelease" in log  # release de dados nunca vira a "Latest" do projeto
 
 
 def test_publica_em_release_existente_sem_recriar(tmp_path: Path, ambiente: dict[str, str]) -> None:
