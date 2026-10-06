@@ -100,7 +100,7 @@ pytest                                   # 197 tests; pytest -m rede also hits t
 - **Lost demand is a conservative estimate**: past trips only happened when there was a bike, so the usual rate already understates demand where stations are often empty.
 - **Occupancy has 15-minute resolution**, and the API's own cache adds about 20 minutes of lag.
 - **Trip files arrive months late**: the demand profile is from the latest 12 published months, not the current week.
-- **The GitHub Actions cron is late and can skip runs**; every scheduled run is measured against its slot. Next step: move the collector to a scheduler with guaranteed timing, using the same handler and the same raw-data keys.
+- **The GitHub Actions cron is late and can skip runs**; every scheduled run is measured against its slot. Measured on 4 Oct 2026: 5 of 96 slots ran (all successful). The workflow now also accepts calls from a free external scheduler on the same minutes, counted as scheduled runs ([setup](docs/COLETA_AGENDADA.md)); the GitHub cron stays as a backup. Long-term step: a managed scheduler (Lambda + EventBridge) with the same handler and the same raw-data keys.
 
 ## Data source and licence
 

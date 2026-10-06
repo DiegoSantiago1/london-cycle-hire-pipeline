@@ -197,7 +197,7 @@ class Execucao:
     terminado_em: str
     status: str  # "sucesso" ou "falha"
     origem: str  # "github_actions", "lambda" ou "local"
-    evento: str | None  # "schedule", "workflow_dispatch"... (só os agendados medem atraso)
+    evento: str | None  # "schedule", "agendador_externo", "workflow_dispatch" (manual)...
     id_execucao: str | None
     tentativa_execucao: str | None
     chave_retrato: str | None = None
@@ -209,11 +209,18 @@ class Execucao:
 
 
 def _contexto_execucao(env: Mapping[str, str]) -> dict[str, str | None]:
-    """Quem disparou: variáveis padrão do GitHub Actions; sem elas, execução local."""
+    """Quem disparou: variáveis padrão do GitHub Actions; sem elas, execução local.
+
+    O agendador externo chama o workflow pela API (evento workflow_dispatch) com
+    gatilho=agendador_externo: o registro grava "agendador_externo", para a medição tratar
+    essa execução como agendada e não como manual."""
     if env.get("GITHUB_ACTIONS") == "true":
+        evento = env.get("GITHUB_EVENT_NAME")
+        if evento == "workflow_dispatch" and env.get("COLETA_GATILHO") == "agendador_externo":
+            evento = "agendador_externo"
         return {
             "origem": "github_actions",
-            "evento": env.get("GITHUB_EVENT_NAME"),
+            "evento": evento,
             "id_execucao": env.get("GITHUB_RUN_ID"),
             "tentativa_execucao": env.get("GITHUB_RUN_ATTEMPT"),
         }

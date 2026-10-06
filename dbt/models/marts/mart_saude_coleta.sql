@@ -1,7 +1,7 @@
 {#
   Saúde da coleta por dia (UTC): execuções agendadas, falhas, janelas do cron sem
-  nenhuma coleta e atraso do agendador (só eventos "schedule" medem atraso; as
-  execuções manuais ficam de fora). É a medição que justifica sair do cron do GitHub
+  nenhuma coleta e atraso do agendador (só as execuções agendadas, do cron do GitHub ou
+  do agendador externo, medem atraso; as manuais ficam de fora). É a medição que justifica sair do cron do GitHub
   para a Lambda + EventBridge (fase 7).
 #}
 {{ config(tags=['diario']) }}
@@ -12,7 +12,7 @@ with execucoes as (
 ),
 
 primeira_agendada as (
-    select min(previsto_em) as desde from execucoes where evento = 'schedule'
+    select min(previsto_em) as desde from execucoes where agendada
 ),
 
 janelas as (
@@ -29,7 +29,7 @@ agendadas as (
         min(iniciado_em) as iniciado_em,
         bool_or(status = 'sucesso') as sucesso
     from execucoes
-    where evento = 'schedule'
+    where agendada
     group by 1
 ),
 
@@ -56,7 +56,7 @@ totais as (
         dia,
         count(*) as execucoes,
         count(*) filter (where status = 'falha') as falhas,
-        count(*) filter (where evento <> 'schedule' or evento is null) as manuais
+        count(*) filter (where not agendada) as manuais
     from execucoes
     group by 1
 )

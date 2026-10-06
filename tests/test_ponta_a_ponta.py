@@ -115,7 +115,8 @@ def test_pipeline_inteiro(ambiente: ConfigBanco, tmp_path: Path) -> None:
             "terminado_em": (quando + timedelta(minutes=2, seconds=1)).isoformat(),
             "status": "sucesso",
             "origem": "github_actions",
-            "evento": "schedule",
+            # o cron do GitHub e o agendador externo se alternam: os dois contam como agendada
+            "evento": "schedule" if k % 2 == 0 else "agendador_externo",
             "estacoes": len(estacoes),
         }
         (pasta / f"execucao_{carimbo}.json").write_text(json.dumps(registro), encoding="utf-8")

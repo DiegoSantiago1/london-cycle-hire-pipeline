@@ -8,7 +8,18 @@ on:
     # execuções agendadas (docs/DECISOES.md D13). Execuções manuais (workflow_dispatch)
     # ficam de fora da medição de atraso.
     - cron: "7,22,37,52 * * * *"
+  # O cron do GitHub é "melhor esforço" e, neste repositório, passou a rodar a cada 3 a 8 h.
+  # Um agendador externo (cron-job.org) chama este workflow pela API nos mesmos minutos,
+  # com gatilho=agendador_externo (docs/COLETA_AGENDADA.md, D44). O cron acima fica de
+  # reserva: duas execuções na mesma janela não distorcem nada (cada retrato vale até o
+  # seguinte, e a saúde mede a primeira execução de cada janela).
   workflow_dispatch:
+    inputs:
+      gatilho:
+        description: "Quem disparou: manual ou agendador_externo"
+        type: choice
+        options: [manual, agendador_externo]
+        default: manual
 
 permissions:
   contents: write # criar a release do dia e anexar os arquivos
@@ -35,6 +46,7 @@ jobs:
       - name: Coletar retrato
         env:
           PYTHONPATH: src
+          COLETA_GATILHO: ${{ inputs.gatilho }}
         run: python -m bicicletas.coleta_api --destino saida
 
       # always(): o registro da execução sobe mesmo quando a coleta falha. O job continua

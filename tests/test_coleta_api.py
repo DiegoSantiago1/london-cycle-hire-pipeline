@@ -264,6 +264,23 @@ def test_contexto_do_github_actions() -> None:
     assert coleta_api._contexto_execucao({})["origem"] == "local"
 
 
+def test_agendador_externo_conta_como_agendada_e_manual_continua_manual() -> None:
+    base = {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch"}
+    externo = coleta_api._contexto_execucao({**base, "COLETA_GATILHO": "agendador_externo"})
+    assert externo["evento"] == "agendador_externo"
+    for gatilho in ("manual", "", "qualquer coisa"):
+        assert coleta_api._contexto_execucao({**base, "COLETA_GATILHO": gatilho})["evento"] == (
+            "workflow_dispatch"
+        )
+    # o gatilho só vale para workflow_dispatch: num push, por exemplo, é ignorado
+    push = {
+        "GITHUB_ACTIONS": "true",
+        "GITHUB_EVENT_NAME": "push",
+        "COLETA_GATILHO": "agendador_externo",
+    }
+    assert coleta_api._contexto_execucao(push)["evento"] == "push"
+
+
 def test_main_grava_e_imprime_resultado(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

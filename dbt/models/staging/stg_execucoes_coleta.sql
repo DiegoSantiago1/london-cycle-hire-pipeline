@@ -1,5 +1,6 @@
 {#
-  Execuções da coleta. Para as agendadas (evento = schedule), o horário previsto é o
+  Execuções da coleta. Agendada = cron do GitHub (schedule) ou agendador externo, que
+  chama o workflow pela API nos mesmos minutos. Para as agendadas, o horário previsto é o
   último horário do cron (minutos 7, 22, 37 e 52) até o início; o atraso é a diferença.
   Execução que atrasa mais de 15 min cai na janela seguinte: o atraso fica subestimado
   nesses casos raros, mas a execução "faltante" aparece na contagem de janelas sem coleta.
@@ -23,7 +24,8 @@ with base as (
 
 select
     *,
-    case when evento = 'schedule' then
+    coalesce(evento in ('schedule', 'agendador_externo'), false) as agendada,
+    case when evento in ('schedule', 'agendador_externo') then
         date_trunc('hour', iniciado_em)
         + make_interval(mins => case
             when extract(minute from iniciado_em) >= 52 then 52

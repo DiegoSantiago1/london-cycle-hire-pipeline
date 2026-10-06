@@ -105,7 +105,7 @@ O CI roda tudo a cada push contra um PostgreSQL de verdade, e aviso vira erro.
 - **A demanda perdida é uma estimativa conservadora.** As viagens passadas só aconteceram quando havia bicicleta, então a taxa usual já subestima a procura onde a estação costuma ficar vazia.
 - **A ocupação tem resolução de 15 minutos**, e o cache da própria API soma uns 20 minutos de atraso.
 - **Os arquivos de viagens chegam com meses de atraso.** O perfil de demanda é dos 12 meses publicados mais recentes, não da semana atual.
-- **O cron do GitHub Actions atrasa e pode pular execuções.** Cada execução agendada é medida contra o seu horário. Próximo passo: levar a coleta para um agendador com horário garantido, com o mesmo handler e as mesmas chaves do bruto.
+- **O cron do GitHub Actions atrasa e pode pular execuções.** Cada execução agendada é medida contra o seu horário. Medido em 04/10/2026: rodaram 5 das 96 janelas (todas com sucesso). O workflow agora também aceita chamadas de um agendador externo gratuito nos mesmos minutos, contadas como agendadas ([passo a passo](docs/COLETA_AGENDADA.md)); o cron do GitHub fica de reserva. Passo seguinte: um agendador gerenciado (Lambda + EventBridge), com o mesmo handler e as mesmas chaves do bruto.
 
 ## Fonte dos dados e licença
 
