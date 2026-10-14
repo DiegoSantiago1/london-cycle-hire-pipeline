@@ -2,6 +2,14 @@
 # OIDC assinado e troca por credenciais temporárias de um papel. A AWS confere a
 # assinatura e as condições abaixo; não existe segredo para vazar.
 
+locals {
+  dono_repo = split("/", var.repositorio_github)
+  sub_github_main = format(
+    "repo:%s@%s/%s@%s:ref:refs/heads/main",
+    local.dono_repo[0], var.github_id_dono, local.dono_repo[1], var.github_id_repositorio
+  )
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -20,11 +28,13 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
     # Só este repositório, e só a branch main (execuções agendadas e manuais rodam nela).
-    # Um fork ou um pull request não consegue assumir o papel.
+    # Um fork ou um pull request não consegue assumir o papel. O GitHub manda no "sub" os IDs
+    # imutáveis do dono e do repositório (medido em 14/10/2026: "repo:dono@ID/repo@ID:..."),
+    # então nem um repositório recriado com o mesmo nome passa.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.repositorio_github}:ref:refs/heads/main"]
+      values   = [local.sub_github_main]
     }
   }
 }

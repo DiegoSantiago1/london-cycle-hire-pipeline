@@ -16,6 +16,20 @@ variable "repositorio_github" {
   default     = "DiegoSantiago1/london-cycle-hire-pipeline"
 }
 
+# IDs imutáveis (gh api repos/<dono>/<repo> --jq '.owner.id, .id'): o GitHub os inclui no
+# "sub" do token OIDC, e a condição do papel compara com eles.
+variable "github_id_dono" {
+  description = "ID numérico do dono do repositório no GitHub."
+  type        = string
+  default     = "263783753"
+}
+
+variable "github_id_repositorio" {
+  description = "ID numérico do repositório no GitHub."
+  type        = string
+  default     = "1403573171"
+}
+
 variable "email_alertas" {
   description = "E-mail que recebe os alarmes da coleta. Vazio = sem assinatura por e-mail."
   type        = string
