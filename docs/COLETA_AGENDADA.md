@@ -1,5 +1,7 @@
 # Coleta a cada 15 minutos com um agendador externo
 
+> **Substituído em 14/10/2026 pela AWS** (EventBridge Scheduler → Lambda → S3, D45 e [infra/README.md](../infra/README.md)). Este passo a passo não chegou a ser configurado; fica como alternativa gratuita caso a parte da nuvem seja desligada. O workflow continua aceitando `gatilho=agendador_externo`.
+
 O cron do GitHub Actions é "melhor esforço". Neste repositório ele passou a rodar a coleta a cada 3 a 8 horas, em vez de a cada 15 minutos. Em 04/10/2026, por exemplo, rodaram 5 das 96 janelas. Todas as execuções deram certo: o problema é só o horário. O próprio painel de saúde mediu isso, e o job diário falha de propósito quando os dados ficam velhos (D40).
 
 A solução gratuita, sem cartão e sem mudar a arquitetura: um agendador externo chama o workflow `coleta` pela API do GitHub nos mesmos minutos (7, 22, 37 e 52). O cron do GitHub continua como reserva. A AWS (Lambda + EventBridge) segue como a fase 7, quando houver conta.

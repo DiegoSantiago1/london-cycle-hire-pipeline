@@ -6,11 +6,17 @@
 # Cada arquivo em saida/bruto/<fonte>/data=AAAA-MM-DD/ vai para a release com a tag
 # bruto-bikepoint-AAAA-MM-DD (criada se ainda não existir). O nome do arquivo já traz
 # o tipo e o horário, então a chave completa do bruto pode ser reconstruída a partir dele.
+#
+# PULAR_EXISTENTES=1: arquivo que já está na release é pulado em vez de dar erro. É o modo
+# do espelho do S3 (o pacote diário copia o dia da Lambda para a release); a coleta normal
+# continua sem ele, e um nome repetido continua sendo erro.
 # Precisa de GH_TOKEN e GH_REPO no ambiente (o workflow define os dois).
 set -euo pipefail
 
 pasta="${1:?uso: publicar_release.sh <pasta>}"
 GH="${GH:-gh}" # os testes trocam o gh por um falso
+PULAR_EXISTENTES="${PULAR_EXISTENTES:-0}"
+declare -A existentes=() # tag -> nomes já publicados (uma consulta por tag)
 
 shopt -s nullglob
 arquivos=("$pasta"/bruto/*/data=*/*)
@@ -34,7 +40,16 @@ for arquivo in "${arquivos[@]}"; do
       --title "Bruto BikePoint $dia (UTC)" \
       --notes "Retratos da API BikePoint da TfL coletados a cada 15 minutos em $dia (UTC), guardados como vieram, e o registro de cada execução. Powered by TfL Open Data."
   fi
+  nome="$(basename "$arquivo")"
+  if [ "$PULAR_EXISTENTES" = "1" ]; then
+    if [ -z "${existentes[$tag]+x}" ]; then
+      existentes[$tag]="$("$GH" release view "$tag" --json assets --jq '.assets[].name')"
+    fi
+    if grep -qxF "$nome" <<<"${existentes[$tag]}"; then
+      continue
+    fi
+  fi
   # Sem --clobber: o bruto nunca é sobrescrito; um nome repetido faz o upload falhar.
   "$GH" release upload "$tag" "$arquivo"
-  echo "Publicado: $tag/$(basename "$arquivo")"
+  echo "Publicado: $tag/$nome"
 done

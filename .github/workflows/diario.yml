@@ -74,10 +74,32 @@ jobs:
             -f db/bootstrap.sql
           python -m bicicletas.migracoes principal
 
-      - name: Baixar e carregar os últimos 28 dias de retratos
+      - name: Baixar os últimos 28 dias de retratos (releases)
+        run: bash scripts/baixar_retratos.sh 28 retratos
+
+      # Hoje e ontem vêm direto do S3, onde a Lambda grava (D45): a release de ontem só é
+      # completada pelo pacote das 03:17, e a de hoje ainda não existe. Mesmo nome = mesmo
+      # arquivo, então o que já veio da release não é baixado duas vezes (mv -n).
+      - name: Entrar na AWS (OIDC, sem chave guardada)
+        if: vars.AWS_ROLE_ARN != ''
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: bash scripts/aws_oidc.sh
+
+      - name: Completar com hoje e ontem direto do S3
+        if: vars.AWS_ROLE_ARN != ''
+        env:
+          BRUTO_BUCKET: ${{ vars.BRUTO_BUCKET }}
         run: |
-          bash scripts/baixar_retratos.sh 28 retratos
-          python -m bicicletas.retratos_carga --pasta retratos
+          for dia in "$(date -u +%F)" "$(date -u -d yesterday +%F)"; do
+            bash scripts/espelhar_s3.sh "$dia" s3_bruto
+          done
+          if [ -d s3_bruto ]; then find s3_bruto -type f -exec mv -n -t retratos {} +; fi
+          echo "Na pasta: $(find retratos -maxdepth 1 -type f | wc -l) arquivos."
+
+      - name: Carregar os retratos
+        run: python -m bicicletas.retratos_carga --pasta retratos
 
       - name: Carregar os agregados das viagens
         run: python -m bicicletas.agregados carregar

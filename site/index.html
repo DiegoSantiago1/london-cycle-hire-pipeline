@@ -263,8 +263,8 @@
       <h2 class="rev" data-i18n="h_pipeline">Data that never stops arriving</h2>
       <p class="lead rev" data-i18n="p_pipeline">Two rhythms: live snapshots every 15 minutes, and trip files that TfL publishes months late. Raw data is stored untouched; everything else is rebuilt from it every day.</p>
       <div class="fluxo-pipeline rev">
-        <div class="no"><span class="etq" data-i18n="e1">every 15 min</span><b data-i18n="n1">Collect</b><span data-i18n="n1s">TfL BikePoint API, retries, run record</span></div>
-        <div class="no"><span class="etq" data-i18n="e2">raw, untouched</span><b data-i18n="n2">Data lake</b><span data-i18n="n2s">gzip byte for byte, S3-style keys, daily package with hashes</span></div>
+        <div class="no"><span class="etq" data-i18n="e1">every 15 min</span><b data-i18n="n1">Collect</b><span data-i18n="n1s">AWS Lambda fired by EventBridge Scheduler, retries, run record</span></div>
+        <div class="no"><span class="etq" data-i18n="e2">raw, untouched</span><b data-i18n="n2">Data lake</b><span data-i18n="n2s">S3, gzip byte for byte, never overwritten, mirrored daily to GitHub Releases</span></div>
         <div class="no"><span class="etq" data-i18n="e3">months late</span><b data-i18n="n3">Trip files</b><span data-i18n="n3s">downloaded by ETag, loaded by column name, one transaction per file</span></div>
         <div class="no"><span class="etq">PostgreSQL</span><b>bruto → staging</b><span data-i18n="n4s">typed, two file formats unified</span></div>
         <div class="no"><span class="etq">dbt</span><b>marts</b><span data-i18n="n5s">occupancy, lost demand, ranking, with tests</span></div>
@@ -282,7 +282,7 @@
     <div class="dentro">
       <div class="olho rev" data-i18n="o_saude">Pipeline health · live</div>
       <h2 class="rev" data-i18n="h_saude">How do we know today's data arrived?</h2>
-      <p class="lead rev" data-i18n="p_saude">Every run writes a record, success or failure. Scheduled runs are compared with the time they should have started: that delay, measured run by run, is the evidence for moving the collector off the GitHub Actions cron.</p>
+      <p class="lead rev" data-i18n="p_saude">Every run writes a record, success or failure. Scheduled runs are compared with the time they should have started. That measurement showed the GitHub Actions cron running about 4 of 96 slots a day, so since 14 Oct 2026 the collector runs on AWS Lambda, fired by EventBridge Scheduler and writing to S3.</p>
       <div class="grade g4 rev" style="margin:22px 0" id="tiles_saude"></div>
       <div class="cartao rolagem rev"><table class="tabela" id="t_saude" aria-label="Collection health by day"></table></div>
     </div>
@@ -322,8 +322,8 @@ const TXT = {
     aviso_estimativa: "É uma estimativa conservadora: as viagens passadas só aconteceram quando havia bicicleta, então a taxa usual já subestima a procura nas estações que costumam ficar vazias.",
     o_pipeline: "Como foi construído", h_pipeline: "Dados que não param de chegar",
     p_pipeline: "Dois ritmos: retratos ao vivo a cada 15 minutos e arquivos de viagens que a TfL publica com meses de atraso. O bruto é guardado intocado; todo o resto é recalculado a partir dele todo dia.",
-    e1: "a cada 15 min", n1: "Coleta", n1s: "API BikePoint da TfL, novas tentativas, registro de cada execução",
-    e2: "bruto, intocado", n2: "Data lake", n2s: "gzip byte a byte, chaves no formato do S3, pacote diário com hashes",
+    e1: "a cada 15 min", n1: "Coleta", n1s: "AWS Lambda disparada pelo EventBridge Scheduler, novas tentativas, registro de cada execução",
+    e2: "bruto, intocado", n2: "Data lake", n2s: "S3, gzip byte a byte, nunca sobrescrito, espelhado todo dia nas releases do GitHub",
     e3: "meses de atraso", n3: "Arquivos de viagens", n3s: "baixados por ETag, carregados pelo nome da coluna, uma transação por arquivo",
     n4s: "tipado, os dois formatos unificados", n5s: "ocupação, demanda perdida, ranking, com testes",
     e6: "todo dia", n6: "Esta página", n6s: "recriada do zero; não é publicada se um teste falha",
@@ -334,7 +334,7 @@ const TXT = {
     f3: "idade mediana do dado da API na coleta",
     f3s: "A API serve de um cache, então retratos seguidos podem ser idênticos. A ocupação é medida no instante da coleta; a idade do dado é medida todo dia e mostrada aqui.",
     o_saude: "Saúde do pipeline · ao vivo", h_saude: "Como saber que o dado de hoje chegou?",
-    p_saude: "Cada execução grava um registro, de sucesso ou de falha. As execuções agendadas são comparadas com o horário em que deveriam começar: esse atraso, medido execução a execução, é a evidência para tirar a coleta do cron do GitHub Actions.",
+    p_saude: "Cada execução grava um registro, de sucesso ou de falha. As execuções agendadas são comparadas com o horário em que deveriam começar. Essa medição mostrou o cron do GitHub Actions rodando cerca de 4 das 96 janelas por dia; por isso, desde 14/10/2026, a coleta roda na AWS Lambda, disparada pelo EventBridge Scheduler e gravando no S3.",
     rodape: "Contém dados da Transport for London usados conforme os termos de dados de transporte da TfL (baseados na Open Government Licence v2.0). Sem vínculo com a TfL nem endosso dela. Mapa © colaboradores do OpenStreetMap."
   }
 };

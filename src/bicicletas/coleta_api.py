@@ -1,11 +1,13 @@
 """Coleta ao vivo: um retrato da API BikePoint da TfL, guardado intocado no bruto.
 
 Só biblioteca padrão, de propósito (docs/DECISOES.md D24): roda no GitHub Actions sem
-instalar nada e vira uma função Lambda (fase 7) sem empacotar dependências. Por isso
-este módulo não importa bicicletas.config (que usa dotenv e SQLAlchemy).
+instalar nada e roda na AWS Lambda sem empacotar dependências. O único extra é o boto3,
+que já vem no runtime Python da Lambda e só é importado lá (destino S3). Por isso este
+módulo não importa bicicletas.config (que usa dotenv e SQLAlchemy).
 
 Uso:
-    python -m bicicletas.coleta_api --destino saida/
+    python -m bicicletas.coleta_api --destino saida/    (pasta local; GitHub Actions)
+    lambda_handler(event, context)                      (AWS Lambda; grava no S3, D45)
 
 Cada execução grava dois arquivos, com chaves no formato do S3 (D5):
     bruto/bikepoint/data=AAAA-MM-DD/bikepoint_AAAA-MM-DDTHH-MM-SSZ.json.gz
@@ -21,6 +23,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib
 import json
 import os
 import sys
@@ -58,9 +61,15 @@ class ErroColeta(RuntimeError):
 
 
 class Destino(Protocol):
-    """Onde o bruto é gravado. Hoje uma pasta local; na fase 7, um bucket S3."""
+    """Onde o bruto é gravado: uma pasta local (GitHub Actions) ou um bucket S3 (Lambda)."""
 
     def gravar(self, chave: str, dados: bytes) -> None: ...
+
+
+class ClienteS3(Protocol):
+    """O pedaço do cliente S3 do boto3 que a coleta usa (os testes passam um falso)."""
+
+    def put_object(self, **parametros: Any) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -76,6 +85,45 @@ class DestinoLocal:
                 arquivo.write(dados)
         except FileExistsError:
             raise ErroColeta(f"{chave} já existe: o bruto nunca é sobrescrito.") from None
+
+
+# Respostas do S3 quando o If-None-Match falha: o objeto já existe (412) ou outra gravação
+# do mesmo nome está em andamento (409).
+_S3_JA_EXISTE = {"PreconditionFailed", "ConditionalRequestConflict"}
+
+
+@dataclass(frozen=True)
+class DestinoS3:
+    """Bucket S3 com as mesmas chaves da pasta local (D5).
+
+    If-None-Match: * faz o próprio S3 recusar a gravação se a chave já existe: a regra
+    "o bruto nunca é sobrescrito" vale no servidor, e não só no código (D45). O
+    versionamento do bucket e a política do IAM (a Lambda só tem PutObject) completam a
+    proteção.
+    """
+
+    bucket: str
+    cliente: ClienteS3
+
+    def gravar(self, chave: str, dados: bytes) -> None:
+        tipo = "application/gzip" if chave.endswith(".gz") else "application/json"
+        try:
+            self.cliente.put_object(
+                Bucket=self.bucket,
+                Key=chave,
+                Body=dados,
+                ContentType=tipo,
+                IfNoneMatch="*",
+                ChecksumAlgorithm="SHA256",
+            )
+        except Exception as erro:
+            # Sem importar o botocore: o ClientError traz o código em erro.response.
+            resposta = getattr(erro, "response", None)
+            codigo = resposta.get("Error", {}).get("Code") if isinstance(resposta, dict) else None
+            if codigo in _S3_JA_EXISTE:
+                raise ErroColeta(f"{chave} já existe: o bruto nunca é sobrescrito.") from None
+            motivo = codigo or type(erro).__name__
+            raise ErroColeta(f"S3: falha ao gravar {chave}: {motivo}") from erro
 
 
 @dataclass(frozen=True)
@@ -196,8 +244,10 @@ class Execucao:
     iniciado_em: str
     terminado_em: str
     status: str  # "sucesso" ou "falha"
-    origem: str  # "github_actions", "lambda" ou "local"
-    evento: str | None  # "schedule", "agendador_externo", "workflow_dispatch" (manual)...
+    origem: str  # "github_actions", "aws_lambda" ou "local"
+    # "schedule", "agendador_externo", "eventbridge_scheduler" (agendadas) ou
+    # "workflow_dispatch"/"manual" (disparos à mão)...
+    evento: str | None
     id_execucao: str | None
     tentativa_execucao: str | None
     chave_retrato: str | None = None
@@ -225,6 +275,23 @@ def _contexto_execucao(env: Mapping[str, str]) -> dict[str, str | None]:
             "tentativa_execucao": env.get("GITHUB_RUN_ATTEMPT"),
         }
     return {"origem": "local", "evento": None, "id_execucao": None, "tentativa_execucao": None}
+
+
+# Gatilhos aceitos no evento da Lambda. O EventBridge Scheduler manda
+# {"gatilho": "eventbridge_scheduler"} (infra/scheduler.tf); qualquer outra coisa, como um
+# teste pelo console ou pelo `aws lambda invoke`, é tratada como manual.
+_GATILHOS_LAMBDA = {"eventbridge_scheduler"}
+
+
+def _contexto_lambda(event: Mapping[str, Any], context: Any) -> dict[str, str | None]:
+    """Quem disparou a Lambda: o agendador (conta como agendada) ou alguém à mão."""
+    gatilho = event.get("gatilho")
+    return {
+        "origem": "aws_lambda",
+        "evento": gatilho if gatilho in _GATILHOS_LAMBDA else "manual",
+        "id_execucao": getattr(context, "aws_request_id", None),
+        "tentativa_execucao": None,
+    }
 
 
 def executar(
@@ -271,24 +338,34 @@ def _json(registro: Execucao) -> bytes:
     return (json.dumps(asdict(registro), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Ponto de entrada no formato da AWS Lambda (fase 7). Até lá, chamado pelo main().
+def _cliente_s3() -> ClienteS3:
+    """Cliente S3 do boto3, que vem no runtime Python da Lambda. Importado só aqui: no
+    GitHub Actions e nos testes o boto3 não existe e não faz falta."""
+    boto3 = importlib.import_module("boto3")
+    cliente: ClienteS3 = boto3.client("s3")
+    return cliente
 
-    O destino vem de BICICLETAS_DESTINO_BRUTO (pasta local). Na fase 7 entra o destino S3.
+
+def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+    """Ponto de entrada da AWS Lambda (infra/lambda.tf).
+
+    Grava no bucket de BICICLETAS_BUCKET_BRUTO. Uma falha de coleta é relançada depois
+    de gravar o registro: a invocação termina com erro e o alarme do CloudWatch avisa.
     """
-    raiz = os.environ.get("BICICLETAS_DESTINO_BRUTO")
-    if not raiz:
-        raise ErroColeta("BICICLETAS_DESTINO_BRUTO não definida.")
-    return asdict(executar(DestinoLocal(Path(raiz))))
+    bucket = os.environ.get("BICICLETAS_BUCKET_BRUTO")
+    if not bucket:
+        raise ErroColeta("BICICLETAS_BUCKET_BRUTO não definida.")
+    evento = event if isinstance(event, dict) else {}
+    destino = DestinoS3(bucket, _cliente_s3())
+    return asdict(executar(destino, contexto=_contexto_lambda(evento, context)))
 
 
 def main(argumentos: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Coleta um retrato da API BikePoint da TfL.")
     parser.add_argument("--destino", required=True, type=Path, help="pasta raiz do bruto")
     args = parser.parse_args(argumentos)
-    os.environ["BICICLETAS_DESTINO_BRUTO"] = str(args.destino)
     try:
-        resultado = lambda_handler({}, None)
+        resultado = asdict(executar(DestinoLocal(args.destino)))
     except ErroColeta as erro:
         print(f"ERRO na coleta: {erro}", file=sys.stderr)
         return 1

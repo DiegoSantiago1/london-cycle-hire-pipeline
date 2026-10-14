@@ -1,6 +1,6 @@
 # PLAN — london-cycle-hire-pipeline
 
-## Estado (03/10/2026, noite)
+## Estado (14/10/2026)
 
 | Fase | Situação |
 |---|---|
@@ -11,10 +11,10 @@
 | 4 dbt | Feita: 17 modelos, 47 testes |
 | 5 Job diário | Feito e publicado (recria o banco do zero e publica no Pages) |
 | 6 Página | Publicada: https://diegosantiago1.github.io/london-cycle-hire-pipeline/ |
-| 7 Nuvem + Terraform | **Pendente**: depende da conta na nuvem |
+| 7 Nuvem + Terraform | **No ar desde 14/10/2026**: EventBridge Scheduler → Lambda → S3, OIDC para o GitHub Actions, alarmes no CloudWatch; 22 recursos em `infra/` (D45–D49) |
 | 8 Fechamento | README EN/PT feito; revisões e portfólio em andamento |
 
-O que mudou em relação ao plano original, com o motivo: D31 a D43 em [DECISOES.md](DECISOES.md).
+O que mudou em relação ao plano original, com o motivo: D31 a D49 em [DECISOES.md](DECISOES.md).
 
 > Plano escrito em 03/10/2026, depois do grill. As decisões e o motivo de cada uma estão em [DECISOES.md](DECISOES.md). Números marcados com **(medido)** foram medidos em 03/10/2026; os marcados com **(estimativa)** ainda precisam ser medidos.
 

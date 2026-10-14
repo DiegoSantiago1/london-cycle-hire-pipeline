@@ -114,9 +114,9 @@ def test_pipeline_inteiro(ambiente: ConfigBanco, tmp_path: Path) -> None:
             "iniciado_em": (quando + timedelta(minutes=2)).isoformat(),
             "terminado_em": (quando + timedelta(minutes=2, seconds=1)).isoformat(),
             "status": "sucesso",
-            "origem": "github_actions",
-            # o cron do GitHub e o agendador externo se alternam: os dois contam como agendada
-            "evento": "schedule" if k % 2 == 0 else "agendador_externo",
+            # cron do GitHub, agendador externo e Lambda se revezam: os três contam como agendada
+            "origem": "aws_lambda" if k == 3 else "github_actions",
+            "evento": ("schedule", "agendador_externo", "schedule", "eventbridge_scheduler")[k],
             "estacoes": len(estacoes),
         }
         (pasta / f"execucao_{carimbo}.json").write_text(json.dumps(registro), encoding="utf-8")
@@ -161,5 +161,6 @@ def test_pipeline_inteiro(ambiente: ConfigBanco, tmp_path: Path) -> None:
     saude = painel["saude"][0]
     assert saude["janelas"] == 4
     assert saude["janelas_com_sucesso"] == 4
+    assert saude["janelas_lambda"] == 1  # a 4ª janela foi coletada pela Lambda
     assert float(saude["atraso_mediano_min"]) == pytest.approx(2.0)
     assert painel["viagens"]["viagens_total"] == "41376421"

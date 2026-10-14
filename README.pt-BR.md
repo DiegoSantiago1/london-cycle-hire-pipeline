@@ -1,6 +1,6 @@
 # London Cycle Hire Pipeline
 
-**Onde as bicicletas públicas de Londres acabam, e onde a operação deve agir primeiro?** Pipeline de dados das TfL Santander Cycles: retratos de todas as estações a cada 15 minutos, 41 milhões de viagens publicadas, PostgreSQL e dbt, e uma página de resultados recriada do zero todo dia.
+**Onde as bicicletas públicas de Londres acabam, e onde a operação deve agir primeiro?** Pipeline de dados das TfL Santander Cycles: retratos de todas as estações a cada 15 minutos coletados por AWS Lambda no S3 (infraestrutura em Terraform), 41 milhões de viagens publicadas, PostgreSQL e dbt, e uma página de resultados recriada do zero todo dia.
 
 ## 🔗 Acessar o projeto
 
@@ -11,7 +11,7 @@
 
 Uma página interativa em português e inglês que abre no navegador, sem instalar nada: um mapa que você move hora a hora, as estações ordenadas pelas viagens que devem perder e a saúde do próprio pipeline, ao vivo.
 
-[English](README.md) · [Plano](docs/PLAN.md) · [Decisões e medições (D1–D43)](docs/DECISOES.md)
+[English](README.md) · [Plano](docs/PLAN.md) · [Decisões e medições (D1–D49)](docs/DECISOES.md) · [Infraestrutura](infra/README.md)
 
 ![Fluxos da manhã: às 8h as maiores ligações saem de Waterloo para a City](docs/img/mapa_fluxos.png)
 
@@ -38,9 +38,11 @@ O desafio de engenharia é que **o dado não para de chegar**: carga incremental
 ## Como funciona
 
 ```
-                 a cada 15 min (minutos 7, 22, 37, 52)
- API BikePoint ──► coleta (handler no estilo serverless, só biblioteca padrão) ──► bruto intocado (.json.gz)
-                                                                                   uma release do GitHub por dia
+                 a cada 15 min (minutos 7, 22, 37, 52 UTC), AWS (Terraform, infra/)
+ EventBridge Scheduler ──► Lambda de coleta (só biblioteca padrão) ──► S3: bruto intocado (.json.gz)
+                                                                          │ espelhado todo dia (OIDC, sem chave)
+                                                                          ▼
+                                                              uma release pública do GitHub por dia
                  todo dia (GitHub Actions)
  últimos 28 dias de retratos ─┐
  agregados das viagens (CSV)  ├─► PostgreSQL temporário ─► dbt build + testes ─► exportador ─► GitHub Pages
@@ -50,13 +52,16 @@ O desafio de engenharia é que **o dado não para de chegar**: carga incremental
  bucket da TfL ──► download por ETag ──► carga incremental ──► PostgreSQL ──► dbt ──► agregados pequenos (CSV no repo)
 ```
 
+**Camadas Medallion.** Bruto intocado (bronze) → `staging` do dbt, tipado e unificado (prata) → `intermediario` e `marts`, prontos para as perguntas (ouro).
+
 **Dois ritmos.** O GitHub Actions não guarda banco entre execuções e não comportaria 41 milhões de viagens. Por isso a parte pesada e rara (os arquivos de viagens, publicados com meses de atraso) roda no PC, e a parte leve e diária roda no Actions. O job diário recria o banco a partir do bruto toda vez, o que prova na prática que o pipeline é reprodutível.
 
 | Camada | O que faz |
 |---|---|
-| **Coleta** (`src/bicicletas/coleta_api.py`) | Só biblioteca padrão do Python, escrita como handler no estilo serverless (`lambda_handler(event, context)`), para poder ir para um agendador gerenciado sem mudar. Três tentativas com espera crescente; resposta sem a forma de BikePoint (página HTML de erro, lista vazia, campo faltando) é execução com falha e nunca entra no bruto. Cada execução grava um registro (sucesso ou falha, quem disparou, número de estações, SHA-256): o GitHub apaga o histórico em 90 dias, o registro fica. |
-| **Bruto** | Cada resposta guardada byte a byte (gzip com `mtime=0`: o mesmo conteúdo dá o mesmo hash), chaves no formato do S3 (`bruto/bikepoint/data=AAAA-MM-DD/...`), nunca sobrescrita. Um `.tar` diário determinístico com manifesto de hashes faz o job diário baixar 28 arquivos em vez de ~2.700. |
+| **Coleta** (`src/bicicletas/coleta_api.py`) | Só biblioteca padrão do Python, rodando como função AWS Lambda (Python 3.14, arm64) disparada pelo EventBridge Scheduler; o mesmo arquivo continua rodando no GitHub Actions, de reserva. Três tentativas com espera crescente; resposta sem a forma de BikePoint (página HTML de erro, lista vazia, campo faltando) é execução com falha e nunca entra no bruto. Cada execução grava um registro (sucesso ou falha, quem disparou, número de estações, SHA-256): o GitHub apaga o histórico em 90 dias, o registro fica. |
+| **Bruto** | Cada resposta guardada byte a byte (gzip com `mtime=0`: o mesmo conteúdo dá o mesmo hash), guardada no S3 em `bruto/bikepoint/data=AAAA-MM-DD/...`, nunca sobrescrita: a Lambda grava com `If-None-Match: *`, então o próprio S3 recusa substituir uma chave que já existe; o papel da função só tem `PutObject`; e o bucket é versionado. Um job diário espelha cada dia numa release pública do GitHub, então o bruto também existe fora da AWS. Um `.tar` diário determinístico com manifesto de hashes faz o job diário baixar 28 arquivos em vez de ~2.700. |
 | **Arquivos de viagens** (`viagens_download.py`, `viagens_carga.py`) | Baixados por ETag com recibo (tamanho, SHA-256, data de publicação), num arquivo `.parcial` trocado só depois de conferido. Carregados **pelo nome da coluna**, nunca pela posição; coluna desconhecida, coluna faltando ou linha com número errado de campos recusa o arquivo. Uma transação por arquivo: apaga as linhas daquele arquivo, insere, registra a versão. Rodar duas vezes não duplica; arquivo republicado substitui a versão anterior; falha no meio deixa a versão anterior intacta. |
+| **Nuvem** (`infra/`, Terraform) | 22 recursos, todos cobrados por uso (sem servidor, banco ou NAT): bucket S3 (acesso público bloqueado, só TLS, versionado), Lambda, EventBridge Scheduler, papéis do IAM com menor privilégio, logs no CloudWatch (14 dias) e dois alarmes (falhas; coleta parada) enviados por e-mail. O GitHub Actions lê o bruto pelo **OIDC**: um token de curta duração trocado por um papel só de leitura, restrito à branch `main` deste repositório, sem chave de acesso guardada em lugar nenhum. |
 | **dbt** (`dbt/`) | `staging` (tipos, os dois formatos unificados) → `intermediario` → `marts` (ocupação por estação e hora, demanda perdida, ranking, fluxos, saúde): 17 modelos com 47 testes de dados e source freshness (retratos: aviso com 1 h, erro com 3 h). |
 | **Página** (`site/`) | Exportada só depois que o `dbt build` passa; teste falhando mantém a página de ontem. Coleta atrasada não bloqueia a página: ela mostra a saúde em vermelho. |
 
@@ -88,24 +93,29 @@ python -m bicicletas.agregados exportar && python -m bicicletas.agregados carreg
 python -m bicicletas.retratos_carga --pasta <pasta com os retratos>
 python -m bicicletas.dbt_rodar build --select tag:diario
 python -m bicicletas.exportar_site
-pytest                                   # 197 testes; pytest -m rede também usa a API real
+pytest                                   # 217 testes; pytest -m rede também usa a API real
+
+# Coleta na nuvem (opcional; precisa de conta na AWS e de `aws login`)
+bash infra/tf.sh init && bash infra/tf.sh plan -out=plano.tfplan && bash infra/tf.sh apply plano.tfplan
 ```
 
 ## Testes
 
-197 testes automáticos e mais um contra a API ao vivo:
+217 testes automáticos e mais um contra a API ao vivo:
 - **Entradas hostis:** HTML no lugar de JSON, gzip truncado, coluna desconhecida no CSV, SQL injection em nomes, arquivo alterado depois do download, arquivo republicado e falha no meio de uma carga.
-- **Scripts de shell** rodando contra um `gh` falso.
+- **Gravação no S3** contra um bucket falso que respeita o `If-None-Match` como o S3 de verdade.
+- **Scripts de shell** rodando contra `gh` e `aws` falsos.
 - **Teste de ponta a ponta:** vai do bruto ao dbt, aos agregados, ao dbt diário e aos dados da página, conferindo os números que saem do outro lado (45 minutos vazia × 2,5 retiradas por hora = 1,9 viagem perdida).
 
-O CI roda tudo a cada push contra um PostgreSQL de verdade, e aviso vira erro.
+O CI roda tudo a cada push contra um PostgreSQL de verdade, mais `terraform fmt` e `validate`, e aviso vira erro.
 
 ## Limitações e próximos passos
 
 - **A demanda perdida é uma estimativa conservadora.** As viagens passadas só aconteceram quando havia bicicleta, então a taxa usual já subestima a procura onde a estação costuma ficar vazia.
 - **A ocupação tem resolução de 15 minutos**, e o cache da própria API soma uns 20 minutos de atraso.
 - **Os arquivos de viagens chegam com meses de atraso.** O perfil de demanda é dos 12 meses publicados mais recentes, não da semana atual.
-- **O cron do GitHub Actions atrasa e pode pular execuções.** Cada execução agendada é medida contra o seu horário. Medido em 04/10/2026: rodaram 5 das 96 janelas (todas com sucesso). O workflow agora também aceita chamadas de um agendador externo gratuito nos mesmos minutos, contadas como agendadas ([passo a passo](docs/COLETA_AGENDADA.md)); o cron do GitHub fica de reserva. Passo seguinte: um agendador gerenciado (Lambda + EventBridge), com o mesmo handler e as mesmas chaves do bruto.
+- **Por que a coleta foi para a AWS:** o cron do GitHub Actions é "melhor esforço". Cada execução agendada é medida contra o seu horário, e a medição foi clara: 5 de 96 janelas em 04/10/2026 e cerca de 4 por dia em 11–13/10 (todas com sucesso, só que fora de hora). Desde 14/10/2026 a coleta roda na Lambda + EventBridge Scheduler, com o mesmo código e as mesmas chaves do bruto; a tabela de saúde da página mostra as janelas coletadas pela Lambda (`janelas_lambda`). O cron do GitHub fica de reserva.
+- **A conta da AWS está no plano gratuito, que termina em abril de 2027.** Nada depende só da AWS: o bruto é espelhado todo dia em releases públicas do GitHub, e `terraform destroy` remove a parte da nuvem com um comando.
 
 ## Fonte dos dados e licença
 

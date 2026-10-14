@@ -216,6 +216,131 @@ def test_destino_local_cria_pastas_e_nunca_sobrescreve(tmp_path: Path) -> None:
     assert (tmp_path / "bruto/a/b.bin").read_bytes() == b"primeiro"
 
 
+class _ErroDoS3(Exception):
+    """Imita o ClientError do botocore: o código do erro vem em .response."""
+
+    def __init__(self, codigo: str) -> None:
+        super().__init__(codigo)
+        self.response = {"Error": {"Code": codigo}}
+
+
+class S3Falso:
+    """Bucket em memória que respeita o If-None-Match: * como o S3 de verdade (412)."""
+
+    def __init__(self, falha: Exception | None = None) -> None:
+        self.objetos: dict[tuple[str, str], bytes] = {}
+        self.pedidos: list[dict[str, Any]] = []
+        self.falha = falha
+
+    def put_object(self, **parametros: Any) -> dict[str, str]:
+        self.pedidos.append(parametros)
+        if self.falha is not None:
+            raise self.falha
+        chave = (parametros["Bucket"], parametros["Key"])
+        if parametros.get("IfNoneMatch") == "*" and chave in self.objetos:
+            raise _ErroDoS3("PreconditionFailed")
+        self.objetos[chave] = parametros["Body"]
+        return {"ETag": '"x"'}
+
+
+def test_destino_s3_grava_com_if_none_match_e_nunca_sobrescreve() -> None:
+    s3 = S3Falso()
+    destino = coleta_api.DestinoS3("balde", s3)
+    destino.gravar("bruto/bikepoint/data=2026-10-03/a.json.gz", b"primeiro")
+    pedido = s3.pedidos[0]
+    assert pedido["IfNoneMatch"] == "*"  # a recusa acontece no próprio S3
+    assert pedido["ContentType"] == "application/gzip"
+    assert pedido["ChecksumAlgorithm"] == "SHA256"
+    with pytest.raises(ErroColeta, match="nunca é sobrescrito"):
+        destino.gravar("bruto/bikepoint/data=2026-10-03/a.json.gz", b"segundo")
+    assert s3.objetos[("balde", "bruto/bikepoint/data=2026-10-03/a.json.gz")] == b"primeiro"
+
+
+def test_destino_s3_registro_vai_como_json() -> None:
+    s3 = S3Falso()
+    coleta_api.DestinoS3("balde", s3).gravar(chave_execucao(INSTANTE), b"{}")
+    assert s3.pedidos[0]["ContentType"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    ("falha", "mensagem"),
+    [
+        (_ErroDoS3("ConditionalRequestConflict"), "nunca é sobrescrito"),
+        (_ErroDoS3("AccessDenied"), "S3: falha ao gravar .*AccessDenied"),
+        (TimeoutError("lento"), "S3: falha ao gravar .*TimeoutError"),
+    ],
+)
+def test_destino_s3_erros_viram_erro_de_coleta(falha: Exception, mensagem: str) -> None:
+    with pytest.raises(ErroColeta, match=mensagem):
+        coleta_api.DestinoS3("balde", S3Falso(falha)).gravar("bruto/x.json", b"{}")
+
+
+# ---------------------------------------------------------------- Lambda
+class _ContextoLambda:
+    aws_request_id = "req-123"
+
+
+def test_contexto_lambda_agendada_e_manual() -> None:
+    agendada = coleta_api._contexto_lambda({"gatilho": "eventbridge_scheduler"}, _ContextoLambda())
+    assert agendada == {
+        "origem": "aws_lambda",
+        "evento": "eventbridge_scheduler",
+        "id_execucao": "req-123",
+        "tentativa_execucao": None,
+    }
+    # teste pelo console, invoke à mão ou gatilho desconhecido: manual (fora da medição)
+    for evento in ({}, {"gatilho": "qualquer"}, {"gatilho": None}):
+        assert coleta_api._contexto_lambda(evento, None)["evento"] == "manual"
+
+
+def test_lambda_handler_grava_no_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    s3 = S3Falso()
+    monkeypatch.setenv("BICICLETAS_BUCKET_BRUTO", "balde")
+    monkeypatch.setattr(coleta_api, "_cliente_s3", lambda: s3)
+    monkeypatch.setattr(coleta_api, "baixar", lambda: AMOSTRA)
+    resultado = coleta_api.lambda_handler({"gatilho": "eventbridge_scheduler"}, _ContextoLambda())
+    assert resultado["status"] == "sucesso"
+    assert resultado["origem"] == "aws_lambda"
+    assert resultado["evento"] == "eventbridge_scheduler"
+    chaves = sorted(chave for _, chave in s3.objetos)
+    assert chaves[0].startswith("bruto/bikepoint/data=")  # retrato e registro, mesmas chaves
+    assert chaves[1].startswith("bruto/execucoes_coleta/data=")
+    registro = json.loads(s3.objetos[("balde", chaves[1])])
+    assert registro["id_execucao"] == "req-123"
+
+
+def test_lambda_handler_com_falha_grava_registro_e_termina_com_erro(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s3 = S3Falso()
+    monkeypatch.setenv("BICICLETAS_BUCKET_BRUTO", "balde")
+    monkeypatch.setattr(coleta_api, "_cliente_s3", lambda: s3)
+    monkeypatch.setattr(coleta_api, "baixar", lambda: b"<html>erro</html>")
+    with pytest.raises(ErroColeta, match="não é JSON"):
+        coleta_api.lambda_handler(None, None)  # evento vazio também funciona
+    [(_, chave)] = s3.objetos
+    assert chave.startswith("bruto/execucoes_coleta/")
+    assert json.loads(s3.objetos[("balde", chave)])["status"] == "falha"
+
+
+def test_lambda_handler_sem_bucket_configurado(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BICICLETAS_BUCKET_BRUTO", raising=False)
+    with pytest.raises(ErroColeta, match="BICICLETAS_BUCKET_BRUTO"):
+        coleta_api.lambda_handler({}, None)
+
+
+def test_main_ignora_o_bucket_e_grava_na_pasta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Com o bucket no ambiente, a linha de comando continua gravando só na pasta."""
+    monkeypatch.setenv("BICICLETAS_BUCKET_BRUTO", "balde")
+    monkeypatch.setattr(coleta_api, "_cliente_s3", lambda: pytest.fail("não devia usar o S3"))
+    monkeypatch.setattr(coleta_api, "baixar", lambda: AMOSTRA)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    assert coleta_api.main(["--destino", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "sucesso"
+
+
 # ---------------------------------------------------------------- execução completa
 def test_execucao_com_sucesso_grava_retrato_e_registro_com_o_mesmo_carimbo(tmp_path: Path) -> None:
     registro = executar(

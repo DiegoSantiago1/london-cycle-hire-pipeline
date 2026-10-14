@@ -64,3 +64,19 @@ jobs:
 
       - name: Testes
         run: pytest
+
+  # Infraestrutura (infra/): formatação e validação do Terraform, sem tocar na AWS
+  # (init sem backend, sem credenciais). Mesma imagem que o infra/tf.sh usa localmente.
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: terraform fmt e validate
+        run: |
+          tf() { docker run --rm -v "$PWD:/repo" -w /repo/infra hashicorp/terraform:1.16.5 "$@"; }
+          tf fmt -check -recursive -diff
+          tf init -backend=false -input=false
+          tf validate

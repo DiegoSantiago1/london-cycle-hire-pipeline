@@ -1,6 +1,6 @@
 # London Cycle Hire Pipeline
 
-**Where do London's public bikes run out, and where should operations act first?** A data pipeline on TfL Santander Cycles: live snapshots of every station every 15 minutes, 41 million published trips, PostgreSQL and dbt, and a results page rebuilt from scratch every day.
+**Where do London's public bikes run out, and where should operations act first?** A data pipeline on TfL Santander Cycles: live snapshots of every station every 15 minutes collected by AWS Lambda into S3 (infrastructure in Terraform), 41 million published trips, PostgreSQL and dbt, and a results page rebuilt from scratch every day.
 
 ## 🔗 Access the project
 
@@ -11,7 +11,7 @@
 
 An interactive page in English and Portuguese that opens in the browser, with nothing to install: a map you can move hour by hour, the stations ranked by estimated lost trips, and the pipeline's own health, live.
 
-[Português](README.pt-BR.md) · [Plan](docs/PLAN.md) · [Decisions and measurements (D1–D43)](docs/DECISOES.md)
+[Português](README.pt-BR.md) · [Plan](docs/PLAN.md) · [Decisions and measurements (D1–D49)](docs/DECISOES.md) · [Infrastructure](infra/README.md)
 
 ![Morning flows: at 8am the busiest links leave Waterloo for the City](docs/img/mapa_fluxos.png)
 
@@ -38,9 +38,11 @@ The engineering challenge is that **the data never stops arriving**: incremental
 ## How it works
 
 ```
-                 every 15 min (minutes 7, 22, 37, 52)
- TfL BikePoint API ──► collector (serverless-style handler, stdlib only) ──► raw, untouched (.json.gz)
-                                                                          one GitHub Release per day
+                 every 15 min (minutes 7, 22, 37, 52 UTC), AWS (Terraform, infra/)
+ EventBridge Scheduler ──► Lambda collector (stdlib only) ──► S3: raw, untouched (.json.gz)
+                                                                 │ mirrored daily (OIDC, no stored keys)
+                                                                 ▼
+                                                     public GitHub Release per day
                  daily (GitHub Actions)
  last 28 days of snapshots ─┐
  trip aggregates (repo CSV) ├─► throwaway PostgreSQL ─► dbt build + tests ─► exporter ─► GitHub Pages
@@ -50,14 +52,17 @@ The engineering challenge is that **the data never stops arriving**: incremental
  TfL bucket ──► download by ETag ──► incremental load ──► PostgreSQL ──► dbt ──► small aggregates (CSV in repo)
 ```
 
+**Medallion layers.** Raw data untouched (bronze) → dbt `staging`, typed and unified (silver) → `intermediario` and `marts`, ready for the questions (gold).
+
 **Two rhythms.** GitHub Actions keeps no database between runs and could not hold 41 million trips, so the heavy, rare part (trip files, published months late) runs on a PC, and the light, daily part runs in Actions. The daily job rebuilds the database from the raw data every time, which proves in practice that the pipeline is reproducible.
 
 | Layer | What it does |
 |---|---|
-| **Collector** (`src/bicicletas/coleta_api.py`) | Python standard library only, written as a serverless-style function handler (`lambda_handler(event, context)`) so it can move to a managed scheduler unchanged. Three attempts with growing waits; a response without the BikePoint shape (HTML error page, empty list, missing fields) is a failed run and never reaches the raw data. Every run writes a record (success or failure, trigger, station count, SHA-256): GitHub deletes run history after 90 days, the record stays. |
-| **Raw data** | Each response stored byte for byte (gzip `mtime=0`, so the same content gives the same hash), S3-style keys (`bruto/bikepoint/data=YYYY-MM-DD/...`), never overwritten. A deterministic daily `.tar` with a hash manifest lets the daily job download 28 files instead of ~2,700. |
+| **Collector** (`src/bicicletas/coleta_api.py`) | Python standard library only, running as an AWS Lambda function (Python 3.14, arm64) fired by EventBridge Scheduler; the same file still runs in GitHub Actions as a backup. Three attempts with growing waits; a response without the BikePoint shape (HTML error page, empty list, missing fields) is a failed run and never reaches the raw data. Every run writes a record (success or failure, trigger, station count, SHA-256): GitHub deletes run history after 90 days, the record stays. |
+| **Raw data** | Each response stored byte for byte (gzip `mtime=0`, so the same content gives the same hash), stored in S3 under `bruto/bikepoint/data=YYYY-MM-DD/...`, never overwritten: the Lambda writes with `If-None-Match: *`, so S3 itself refuses to replace an existing key, the function's role can only `PutObject`, and the bucket is versioned. A daily job mirrors each day to a public GitHub Release, so the raw data also lives outside AWS. A deterministic daily `.tar` with a hash manifest lets the daily job download 28 files instead of ~2,700. |
 | **Trip files** (`viagens_download.py`, `viagens_carga.py`) | Downloaded by ETag with a receipt (size, SHA-256, publication date), into a `.parcial` file swapped in only after checking. Loaded **by column name**, never by position; an unknown column, a missing one or a row with the wrong number of fields rejects the file. One transaction per file: delete that file's rows, insert, record the version. Running twice does not duplicate; a republished file replaces the old version; a failure halfway leaves the previous version intact. |
 | **dbt** (`dbt/`) | `staging` (types, two file formats unified) → `intermediario` → `marts` (occupancy by station and hour, lost demand, ranking, flows, health), 17 models with 47 data tests and source freshness (snapshots: warn after 1 h, error after 3 h). |
+| **Cloud** (`infra/`, Terraform) | 22 resources, all billed per use (no server, database or NAT): S3 bucket (public access blocked, TLS only, versioned), Lambda, EventBridge Scheduler, least-privilege IAM roles, CloudWatch logs (14 days) and two alarms (failures; collector stopped) sent by e-mail. GitHub Actions reads the raw data through **OIDC**: a short-lived token exchanged for a read-only role restricted to this repository's `main` branch, with no access key stored anywhere. |
 | **Page** (`site/`) | Exported only after `dbt build` passes; a failing test keeps yesterday's page. A late collector does not block the page: it shows the health in red. |
 
 ## Data quality: measured before deciding
@@ -88,19 +93,23 @@ python -m bicicletas.agregados exportar && python -m bicicletas.agregados carreg
 python -m bicicletas.retratos_carga --pasta <folder with snapshots>
 python -m bicicletas.dbt_rodar build --select tag:diario
 python -m bicicletas.exportar_site
-pytest                                   # 197 tests; pytest -m rede also hits the real API
+pytest                                   # 217 tests; pytest -m rede also hits the real API
+
+# Cloud collector (optional; needs an AWS account and `aws login`)
+bash infra/tf.sh init && bash infra/tf.sh plan -out=plano.tfplan && bash infra/tf.sh apply plano.tfplan
 ```
 
 ## Tests
 
-197 automated tests plus one against the live API: hostile inputs (HTML instead of JSON, truncated gzip, an unknown CSV column, SQL injection in names, a file changed after download, a republished file, a failure halfway through a load), the shell scripts run against a fake `gh`, and an **end-to-end test** that goes raw → dbt → aggregates → daily dbt → page data and checks the numbers that come out (45 minutes empty × 2.5 pickups an hour = 1.9 lost trips). CI runs everything on every push against a real PostgreSQL; warnings are errors.
+217 automated tests plus one against the live API: hostile inputs (HTML instead of JSON, truncated gzip, an unknown CSV column, SQL injection in names, a file changed after download, a republished file, a failure halfway through a load), the S3 writer against a fake bucket that enforces `If-None-Match` like S3 does, the shell scripts against fake `gh` and `aws` commands, and an **end-to-end test** that goes raw → dbt → aggregates → daily dbt → page data and checks the numbers that come out (45 minutes empty × 2.5 pickups an hour = 1.9 lost trips). CI runs everything on every push against a real PostgreSQL, plus `terraform fmt` and `validate`; warnings are errors.
 
 ## Limitations and next steps
 
 - **Lost demand is a conservative estimate**: past trips only happened when there was a bike, so the usual rate already understates demand where stations are often empty.
 - **Occupancy has 15-minute resolution**, and the API's own cache adds about 20 minutes of lag.
 - **Trip files arrive months late**: the demand profile is from the latest 12 published months, not the current week.
-- **The GitHub Actions cron is late and can skip runs**; every scheduled run is measured against its slot. Measured on 4 Oct 2026: 5 of 96 slots ran (all successful). The workflow now also accepts calls from a free external scheduler on the same minutes, counted as scheduled runs ([setup](docs/COLETA_AGENDADA.md)); the GitHub cron stays as a backup. Long-term step: a managed scheduler (Lambda + EventBridge) with the same handler and the same raw-data keys.
+- **Why the collector moved to AWS:** the GitHub Actions cron is best-effort. Every scheduled run is measured against its slot, and the measurement was clear: 5 of 96 slots on 4 Oct 2026 and about 4 a day on 11–13 Oct (all successful, just not on time). Since 14 Oct 2026 the collector runs on Lambda + EventBridge Scheduler with the same code and the same raw-data keys; the page's health table shows the slots collected by the Lambda (`janelas_lambda`). The GitHub cron stays as a backup.
+- **The AWS account is on the Free plan, which ends in April 2027.** Nothing depends on AWS alone: the raw data is mirrored to public GitHub Releases every day, and `terraform destroy` removes the cloud part in one command.
 
 ## Data source and licence
 

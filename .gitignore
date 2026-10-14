@@ -30,3 +30,12 @@ logs/
 # Gerado todo dia pelo job diário (não versionar)
 site/dados/painel.json
 retratos/
+
+# Terraform: estado local (tem nomes e ARNs da conta), provedores baixados, pacote da
+# Lambda e variáveis locais (e-mail dos alertas). O .terraform.lock.hcl é versionado.
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/.build/
+infra/terraform.tfvars

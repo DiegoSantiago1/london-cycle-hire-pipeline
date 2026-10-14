@@ -274,3 +274,102 @@ def test_numero_de_dias_invalido(dias: str, tmp_path: Path, ambiente: dict[str, 
     r = _rodar("baixar_retratos.sh", dias, _posix(tmp_path / "x"), env=ambiente)
     assert r.returncode != 0
     assert not (_estado(ambiente) / "chamadas.log").exists()
+
+
+# ---------------------------------------------------------------- publicar_release.sh (espelho)
+def test_espelho_pula_o_que_ja_esta_na_release(tmp_path: Path, ambiente: dict[str, str]) -> None:
+    """O espelho do S3 pode trazer arquivos que a release já tem: pula, sem erro e sem
+    regravar. Sem PULAR_EXISTENTES, o nome repetido continua sendo erro (teste acima)."""
+    _saida_da_coleta(tmp_path / "saida")
+    assert _rodar("publicar_release.sh", _posix(tmp_path / "saida"), env=ambiente).returncode == 0
+    novo = tmp_path / "saida" / chave_retrato(INSTANTE + timedelta(minutes=15))
+    novo.write_bytes(b"retrato novo")
+    r = _rodar(
+        "publicar_release.sh", _posix(tmp_path / "saida"), env={**ambiente, "PULAR_EXISTENTES": "1"}
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.count("Publicado:") == 1  # só o arquivo novo
+    release = _estado(ambiente) / "bruto-bikepoint-2026-10-03"
+    assert len(list(release.iterdir())) == 3
+    log = (_estado(ambiente) / "chamadas.log").read_text(encoding="utf-8")
+    assert log.count("--json assets") == 1  # uma consulta por release, não uma por arquivo
+
+
+# ---------------------------------------------------------------- espelhar_s3.sh
+AWS_FALSO = r"""#!/usr/bin/env bash
+# aws falso: o bucket é a pasta $S3_ESTADO/<bucket>; só entende `s3 cp --recursive`.
+set -euo pipefail
+echo "$*" >> "$S3_ESTADO/chamadas.log"
+[ "$1 $2" = "s3 cp" ] || exit 2
+shift 2
+args=()
+for a in "$@"; do case "$a" in --*) ;; *) args+=("$a") ;; esac; done
+origem="${args[0]#s3://}"; destino="${args[1]}"
+if [ -d "$S3_ESTADO/$origem" ]; then mkdir -p "$destino"; cp -r "$S3_ESTADO/$origem". "$destino"; fi
+"""
+
+
+@pytest.fixture
+def ambiente_s3(tmp_path: Path, ambiente: dict[str, str]) -> dict[str, str]:
+    estado = tmp_path / "s3"
+    estado.mkdir()
+    aws = tmp_path / "aws"
+    aws.write_text(AWS_FALSO, encoding="utf-8", newline="\n")
+    aws.chmod(0o755)
+    return {**ambiente, "AWS": _posix(aws), "S3_ESTADO": _posix(estado), "BRUTO_BUCKET": "balde"}
+
+
+def _no_s3(ambiente: dict[str, str], chave: str, dados: bytes) -> None:
+    arquivo = Path(ambiente["S3_ESTADO"]) / "balde" / chave
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    arquivo.write_bytes(dados)
+
+
+def test_espelha_o_dia_do_s3_com_as_mesmas_chaves(
+    tmp_path: Path, ambiente_s3: dict[str, str]
+) -> None:
+    _no_s3(ambiente_s3, chave_retrato(INSTANTE), b"retrato")
+    _no_s3(ambiente_s3, chave_execucao(INSTANTE), b"{}")
+    _no_s3(ambiente_s3, chave_retrato(INSTANTE + timedelta(days=1)), b"outro dia")
+    r = _rodar("espelhar_s3.sh", "2026-10-03", _posix(tmp_path / "saida"), env=ambiente_s3)
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "saida" / chave_retrato(INSTANTE)).read_bytes() == b"retrato"
+    assert (tmp_path / "saida" / chave_execucao(INSTANTE)).exists()
+    assert "2 arquivos de 2026-10-03" in r.stdout  # o outro dia não vem junto
+
+
+def test_espelho_e_publicacao_juntos(tmp_path: Path, ambiente_s3: dict[str, str]) -> None:
+    """O caminho do pacote diário: S3 → pasta → release, sem duplicar o que já estava lá."""
+    _no_s3(ambiente_s3, chave_retrato(INSTANTE), b"retrato")
+    _no_s3(ambiente_s3, chave_execucao(INSTANTE), b"{}")
+    release = _estado(ambiente_s3) / "bruto-bikepoint-2026-10-03"
+    release.mkdir()
+    (release / Path(chave_execucao(INSTANTE)).name).write_bytes(b"{}")  # já publicado
+    saida = _posix(tmp_path / "saida")
+    assert _rodar("espelhar_s3.sh", "2026-10-03", saida, env=ambiente_s3).returncode == 0
+    r = _rodar("publicar_release.sh", saida, env={**ambiente_s3, "PULAR_EXISTENTES": "1"})
+    assert r.returncode == 0, r.stderr
+    assert sorted(p.name for p in release.iterdir()) == [
+        "bikepoint_2026-10-03T17-22-05Z.json.gz",
+        "execucao_2026-10-03T17-22-05Z.json",
+    ]
+
+
+def test_dia_sem_coleta_no_s3_nao_e_erro(tmp_path: Path, ambiente_s3: dict[str, str]) -> None:
+    r = _rodar("espelhar_s3.sh", "2026-10-03", _posix(tmp_path / "saida"), env=ambiente_s3)
+    assert r.returncode == 0, r.stderr
+    assert "0 arquivos" in r.stdout
+
+
+@pytest.mark.parametrize("dia", ["ontem", "2026-10-3", "2026-10-03; rm -rf /"])
+def test_espelho_recusa_dia_invalido(dia: str, tmp_path: Path, ambiente_s3: dict[str, str]) -> None:
+    r = _rodar("espelhar_s3.sh", dia, _posix(tmp_path / "saida"), env=ambiente_s3)
+    assert r.returncode != 0
+    assert "Dia inválido" in r.stderr
+
+
+def test_espelho_sem_bucket_configurado(tmp_path: Path, ambiente_s3: dict[str, str]) -> None:
+    env = {k: v for k, v in ambiente_s3.items() if k != "BRUTO_BUCKET"}
+    r = _rodar("espelhar_s3.sh", "2026-10-03", _posix(tmp_path / "saida"), env=env)
+    assert r.returncode != 0
+    assert "BRUTO_BUCKET" in r.stderr
