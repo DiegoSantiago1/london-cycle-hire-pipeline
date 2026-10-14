@@ -1,5 +1,7 @@
 # London Cycle Hire Pipeline
 
+[![ci](https://github.com/DiegoSantiago1/london-cycle-hire-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/DiegoSantiago1/london-cycle-hire-pipeline/actions/workflows/ci.yml) [![diario](https://github.com/DiegoSantiago1/london-cycle-hire-pipeline/actions/workflows/diario.yml/badge.svg)](https://github.com/DiegoSantiago1/london-cycle-hire-pipeline/actions/workflows/diario.yml)
+
 **Onde as bicicletas públicas de Londres acabam, e onde a operação deve agir primeiro?** Pipeline de dados das TfL Santander Cycles: retratos de todas as estações a cada 15 minutos coletados por AWS Lambda no S3 (infraestrutura em Terraform), 41 milhões de viagens publicadas, PostgreSQL e dbt, e uma página de resultados recriada do zero todo dia.
 
 ## 🔗 Acessar o projeto
