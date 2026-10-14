@@ -26,6 +26,16 @@ token="$(curl --silent --show-error --fail --retry 3 \
   "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')"
 echo "::add-mask::$token"
 
+# Campos públicos do token (quem é, para quem): o que a condição do papel compara. Ajudam a
+# entender um AccessDenied sem expor o token, que é a parte que vale como credencial.
+reivindicacoes() {
+  local carga="${token#*.}"; carga="${carga%%.*}"
+  carga="$(tr '_-' '/+' <<<"$carga")"
+  while (( ${#carga} % 4 )); do carga="$carga="; done
+  base64 -d <<<"$carga" 2>/dev/null | jq -c '{sub, aud, ref, event_name}'
+}
+echo "Token OIDC: $(reivindicacoes)"
+
 credenciais="$(aws sts assume-role-with-web-identity \
   --role-arn "$AWS_ROLE_ARN" \
   --role-session-name "github-${GITHUB_RUN_ID:-local}" \
