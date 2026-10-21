@@ -67,7 +67,7 @@
   .nota { color: var(--ink-3); font-size: .92rem; }
 
   #progresso { position: fixed; inset: 0 0 auto 0; height: 4px; z-index: 1001; }
-  #progresso span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--destaque), var(--hero-acento, #fbbf24)); }
+  #progresso span { display: block; height: 100%; width: 0; background: var(--destaque); }
   .topo { position: fixed; top: 14px; right: 16px; z-index: 1001; display: flex; gap: 8px; }
   .topo button, .seg button {
     font: 600 13px/1 "DM Sans", system-ui, sans-serif; padding: 9px 13px; border-radius: 999px; cursor: pointer;
@@ -82,22 +82,18 @@
 
   .cap { min-height: 100vh; padding: 96px 16px 72px; display: flex; align-items: center; }
   .cap > .dentro { width: 100%; max-width: 1180px; margin: 0 auto; }
-  .olho { font: 600 .8rem/1.2 "DM Sans", sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--destaque); margin-bottom: 14px; }
   .lead { font-size: 1.15rem; color: var(--ink-2); max-width: 760px; }
 
   .hero {
     color: var(--hero-ink); position: relative; overflow: hidden;
-    background:
-      radial-gradient(rgba(167, 212, 202, .16) 1px, transparent 1.4px) 0 0 / 26px 26px,
-      linear-gradient(155deg, var(--hero) 0%, var(--hero-2) 100%);
+    background: var(--hero);
   }
-  .hero .olho { color: var(--hero-ink-2); }
   .hero h1 span { color: var(--hero-acento); }
   .hero .lead { color: var(--hero-ink-2); }
-  .hero::after {
-    content: ""; position: absolute; inset: auto -10% -40% auto; width: 70vmax; height: 70vmax; border-radius: 50%;
-    background: radial-gradient(circle, rgba(45, 212, 191, .22), rgba(143, 114, 238, .12) 40%, transparent 65%); pointer-events: none;
-  }
+  .acoes { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .botao { display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 999px; font-weight: 600; text-decoration: none; }
+  .botao.cheio { background: var(--hero-acento); color: var(--hero); }
+  .botao.linha { border: 1px solid rgba(167, 212, 202, .45); color: var(--hero-ink); }
   .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
   .chip { border: 1px solid rgba(167, 212, 202, .35); background: rgba(255, 255, 255, .04); border-radius: 999px; padding: 8px 14px; font-size: .92rem; color: var(--hero-ink); }
   .chip b { font-family: Sora, sans-serif; }
@@ -109,7 +105,7 @@
   .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   @media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 620px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
-  .cartao { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 20px; box-shadow: var(--sombra); min-width: 0; }
+  .cartao { background: var(--surface); border-radius: 22px; padding: 20px; min-width: 0; }
   .pergunta { display: flex; gap: 14px; align-items: flex-start; }
   .pergunta .n { font: 700 1.1rem/1 Sora, sans-serif; color: var(--destaque); background: var(--destaque-suave); width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
   .pergunta p { margin: 0; font-weight: 500; }
@@ -125,7 +121,7 @@
   .hora { display: flex; align-items: center; gap: 10px; flex: 1 1 280px; }
   .hora input { flex: 1; accent-color: var(--destaque); }
   .hora output { font: 700 1.25rem/1 Sora, sans-serif; min-width: 64px; font-variant-numeric: tabular-nums; }
-  #mapa { height: min(68vh, 620px); border-radius: 22px; border: 1px solid var(--line); box-shadow: var(--sombra); z-index: 1; }
+  #mapa { height: min(68vh, 620px); border-radius: 22px; z-index: 1; }
   .fundo-claro { filter: grayscale(1) contrast(.85) brightness(1.06); }
   .fundo-escuro { filter: grayscale(1) invert(1) brightness(.78) contrast(.9); }
   .leaflet-container { background: var(--surface-2); font: 14px/1.4 "DM Sans", system-ui, sans-serif; }
@@ -137,7 +133,7 @@
   .legenda i.linha { width: 22px; height: 3px; border-radius: 2px; box-shadow: none; }
 
   .tabela { width: 100%; border-collapse: collapse; font-size: .95rem; }
-  .tabela th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .tabela th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: .85rem; padding: 8px 10px; border-bottom: 1px solid var(--line); }
   .tabela td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   #t_ranking td:nth-child(2) { min-width: 220px; }
   .tabela td.n, .tabela th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -146,13 +142,15 @@
   .barra { display: flex; gap: 2px; height: 10px; min-width: 90px; }
   .barra b { display: block; height: 100%; border-radius: 3px; }
   .rolagem { overflow-x: auto; }
+  /* No celular o ranking fica com posição, estação e viagens perdidas; o resto está no perfil ao lado. */
+  @media (max-width: 620px) { #t_ranking th:nth-child(n+4), #t_ranking td:nth-child(n+4) { display: none; } #t_ranking td:nth-child(2) { min-width: 0; } }
 
   .fluxo-pipeline { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 26px 0; }
   @media (max-width: 900px) { .fluxo-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  .no { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--destaque); border-radius: 16px; padding: 14px; }
+  .no { background: var(--surface); border-radius: 16px; padding: 14px; }
   .no b { display: block; font-family: Sora, sans-serif; font-size: 1rem; }
   .no span { color: var(--ink-2); font-size: .88rem; }
-  .no .etq { font: 600 .7rem/1 "DM Sans", sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--destaque); margin-bottom: 8px; display: block; }
+  .no .etq { font: 600 .8rem/1.2 "DM Sans", sans-serif; color: var(--destaque); margin-bottom: 6px; display: block; }
 
   .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
   .status i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
@@ -177,9 +175,12 @@
 <main>
   <section class="cap hero" id="inicio" data-titulo="Start">
     <div class="dentro">
-      <div class="olho rev" data-i18n="kicker">Data pipeline · live TfL data</div>
-      <h1 class="rev" data-i18n-html="titulo">Where London's bikes <span>run out</span>, and where to act first</h1>
-      <p class="lead rev" data-i18n="intro" style="margin-top:22px">Every 15 minutes the pipeline photographs all of London's public bike stations. Joined with 41 million published trips, it shows which stations run empty or full, when, and how many trips that costs.</p>
+      <h1 class="rev" data-i18n-html="titulo">Where London's bikes <span>run out</span></h1>
+      <p class="lead rev" data-i18n="intro" style="margin-top:22px">A live data pipeline on TfL's public bikes, and where operations should act first. Every 15 minutes it photographs every station; joined with 41 million published trips, it shows which stations run empty or full, when, and how many trips that costs.</p>
+      <div class="acoes rev">
+        <a class="botao cheio" href="#mapa-cap" data-i18n="b_mapa">See the map</a>
+        <a class="botao linha" href="https://github.com/DiegoSantiago1/london-cycle-hire-pipeline" data-i18n="b_codigo">Code on GitHub</a>
+      </div>
       <div class="chips rev" id="chips"></div>
     </div>
     <div class="desce" aria-hidden="true"><span data-i18n="desce">Scroll or press ↓</span><br>⌄</div>
@@ -187,9 +188,8 @@
 
   <section class="cap" id="problema" data-titulo="Problem">
     <div class="dentro">
-      <div class="olho rev" data-i18n="o_problema">The business problem</div>
-      <h2 class="rev" data-i18n="h_problema">Rebalancing: bikes flow one way in the morning, the other way at night</h2>
-      <p class="lead rev" data-i18n="p_problema">Residential stations empty out before work while central ones fill up; in the evening it reverses. An empty station is a trip that never happens. A full one is a rider who cannot return the bike.</p>
+      <h2 class="rev" data-i18n="h_problema">Out in the morning, back at night</h2>
+      <p class="lead rev" data-i18n="p_problema">The rebalancing problem: residential stations empty out before work while central ones fill up; in the evening it reverses. An empty station is a trip that never happens. A full one is a rider who cannot return the bike.</p>
       <div class="grade g4 rev" style="margin:24px 0">
         <div class="cartao pergunta"><span class="n">1</span><p data-i18n="q1">Which stations run empty or full, and when?</p></div>
         <div class="cartao pergunta"><span class="n">2</span><p data-i18n="q2">How long does each one spend with no bikes?</p></div>
@@ -213,8 +213,7 @@
 
   <section class="cap" id="mapa-cap" data-titulo="Map">
     <div class="dentro">
-      <div class="olho rev" data-i18n="o_mapa">Questions 1 and 3 · When and where</div>
-      <h2 class="rev" data-i18n="h_mapa">Move the hour and watch the city empty and fill</h2>
+      <h2 class="rev" data-i18n="h_mapa">Watch the city empty and fill</h2>
       <p class="lead rev" id="p_mapa"></p>
       <div class="controles rev">
         <div class="seg" role="group" aria-label="Map mode">
@@ -238,9 +237,8 @@
 
   <section class="cap" id="ranking" data-titulo="Act first">
     <div class="dentro">
-      <div class="olho rev" data-i18n="o_ranking">Questions 2 and 4 · Where to act first</div>
-      <h2 class="rev" data-i18n="h_ranking">Ranked by the trips each station is estimated to lose</h2>
-      <p class="lead rev" data-i18n="p_ranking">Hours empty (from the live snapshots) × how many people usually take a bike there at that hour (from a year of trips). The same for full stations and returns.</p>
+      <h2 class="rev" data-i18n="h_ranking">Where trips are lost</h2>
+      <p class="lead rev" data-i18n="p_ranking">Stations ranked by the trips each one is estimated to lose: hours empty (from the live snapshots) × how many people usually take a bike there at that hour (from a year of trips). The same for full stations and returns.</p>
       <p class="aviso" id="aviso_poucos" hidden></p>
       <div class="grade g4 rev" style="margin:22px 0" id="tiles"></div>
       <div class="grade rev" style="align-items:start">
@@ -259,7 +257,6 @@
 
   <section class="cap" id="pipeline" data-titulo="Pipeline">
     <div class="dentro">
-      <div class="olho rev" data-i18n="o_pipeline">How it is built</div>
       <h2 class="rev" data-i18n="h_pipeline">Data that never stops arriving</h2>
       <p class="lead rev" data-i18n="p_pipeline">Two rhythms: live snapshots every 15 minutes, and trip files that TfL publishes months late. Raw data is stored untouched; everything else is rebuilt from it every day.</p>
       <div class="fluxo-pipeline rev">
@@ -280,7 +277,6 @@
 
   <section class="cap" id="saude" data-titulo="Health">
     <div class="dentro">
-      <div class="olho rev" data-i18n="o_saude">Pipeline health · live</div>
       <h2 class="rev" data-i18n="h_saude">How do we know today's data arrived?</h2>
       <p class="lead rev" data-i18n="p_saude">Every run writes a record, success or failure. Scheduled runs are compared with the time they should have started. That measurement showed the GitHub Actions cron running about 4 of 96 slots a day, so since 14 Oct 2026 the collector runs on AWS Lambda, fired by EventBridge Scheduler and writing to S3.</p>
       <div class="grade g4 rev" style="margin:22px 0" id="tiles_saude"></div>
@@ -303,24 +299,23 @@
 const TXT = {
   en: {},
   pt: {
-    kicker: "Pipeline de dados · dados ao vivo da TfL",
-    titulo: "Onde as bicicletas de Londres <span>acabam</span>, e onde agir primeiro",
-    intro: "A cada 15 minutos o pipeline fotografa todas as estações de bicicletas públicas de Londres. Somado a 41 milhões de viagens publicadas, mostra quais estações ficam vazias ou cheias, quando, e quantas viagens isso custa.",
+    titulo: "Onde as bicicletas de Londres <span>acabam</span>",
+    intro: "Um pipeline de dados ao vivo das bicicletas públicas da TfL, e onde a operação deve agir primeiro. A cada 15 minutos ele fotografa todas as estações; somado a 41 milhões de viagens publicadas, mostra quais ficam vazias ou cheias, quando, e quantas viagens isso custa.",
+    b_mapa: "Ver o mapa", b_codigo: "Código no GitHub",
     desce: "Role ou aperte ↓",
-    o_problema: "O problema de negócio",
-    h_problema: "Rebalanceamento: de manhã as bicicletas vão para um lado, à noite para o outro",
-    p_problema: "As estações residenciais esvaziam antes do trabalho e as do centro lotam; à noite, o inverso. Estação vazia é viagem que não acontece. Estação cheia é gente que não consegue devolver a bicicleta.",
+    h_problema: "De manhã saem, à noite voltam",
+    p_problema: "O problema do rebalanceamento: as estações residenciais esvaziam antes do trabalho e as do centro lotam; à noite, o inverso. Estação vazia é viagem que não acontece. Estação cheia é gente que não consegue devolver a bicicleta.",
     q1: "Quais estações ficam vazias ou cheias, e quando?", q2: "Quanto tempo cada uma passa sem bicicleta?",
     q3: "Para onde vão as bicicletas, hora a hora?", q4: "Onde a operação deve agir primeiro?",
     h_tendencia: "Viagens por mês", h_eletricas: "Participação das bicicletas elétricas",
     n_eletricas: "Registrada só no formato novo dos arquivos. As primeiras viagens de elétrica nos arquivos são de 14 de setembro de 2022.",
-    o_mapa: "Perguntas 1 e 3 · Quando e onde", h_mapa: "Mude a hora e veja a cidade esvaziar e encher",
+    h_mapa: "Veja a cidade esvaziar e encher",
     m_risco: "Vazia / cheia", m_fluxos: "Fluxos", d_util: "Dias úteis", d_fds: "Fim de semana", hora: "Hora",
-    o_ranking: "Perguntas 2 e 4 · Onde agir primeiro", h_ranking: "Ordenadas pelas viagens que cada estação deve perder",
-    p_ranking: "Horas vazia (dos retratos ao vivo) × quantas pessoas costumam pegar bicicleta ali naquela hora (de um ano de viagens). O mesmo para estação cheia e devoluções.",
+    h_ranking: "Onde as viagens se perdem",
+    p_ranking: "Estações ordenadas pelas viagens que cada uma deve perder: horas vazia (dos retratos ao vivo) × quantas pessoas costumam pegar bicicleta ali naquela hora (de um ano de viagens). O mesmo para estação cheia e devoluções.",
     n_perfil: "Dia útil médio, últimos 12 meses de viagens publicadas. Clique numa estação na tabela ou no mapa.",
     aviso_estimativa: "É uma estimativa conservadora: as viagens passadas só aconteceram quando havia bicicleta, então a taxa usual já subestima a procura nas estações que costumam ficar vazias.",
-    o_pipeline: "Como foi construído", h_pipeline: "Dados que não param de chegar",
+    h_pipeline: "Dados que não param de chegar",
     p_pipeline: "Dois ritmos: retratos ao vivo a cada 15 minutos e arquivos de viagens que a TfL publica com meses de atraso. O bruto é guardado intocado; todo o resto é recalculado a partir dele todo dia.",
     e1: "a cada 15 min", n1: "Coleta", n1s: "AWS Lambda disparada pelo EventBridge Scheduler, novas tentativas, registro de cada execução",
     e2: "bruto, intocado", n2: "Data lake", n2s: "S3, gzip byte a byte, nunca sobrescrito, espelhado todo dia nas releases do GitHub",
@@ -333,7 +328,7 @@ const TXT = {
     f2s: "Os nomes dos arquivos se sobrepõem em alguns dias, então se esperavam repetições. Medido antes de apagar qualquer coisa: nenhuma. Um teste de unicidade agora protege a regra.",
     f3: "idade mediana do dado da API na coleta",
     f3s: "A API serve de um cache, então retratos seguidos podem ser idênticos. A ocupação é medida no instante da coleta; a idade do dado é medida todo dia e mostrada aqui.",
-    o_saude: "Saúde do pipeline · ao vivo", h_saude: "Como saber que o dado de hoje chegou?",
+    h_saude: "Como saber que o dado de hoje chegou?",
     p_saude: "Cada execução grava um registro, de sucesso ou de falha. As execuções agendadas são comparadas com o horário em que deveriam começar. Essa medição mostrou o cron do GitHub Actions rodando cerca de 4 das 96 janelas por dia; por isso, desde 14/10/2026, a coleta roda na AWS Lambda, disparada pelo EventBridge Scheduler e gravando no S3.",
     rodape: "Contém dados da Transport for London usados conforme os termos de dados de transporte da TfL (baseados na Open Government Licence v2.0). Sem vínculo com a TfL nem endosso dela. Mapa © colaboradores do OpenStreetMap."
   }
@@ -609,14 +604,17 @@ function saude() {
 const caps = [...document.querySelectorAll(".cap")];
 const pontos = document.getElementById("pontos");
 caps.forEach(c => { const a = document.createElement("a"); a.href = "#" + c.id; a.setAttribute("aria-label", c.dataset.titulo); pontos.appendChild(a); });
-const obs = new IntersectionObserver(es => es.forEach(e => {
-  if (e.isIntersecting) {
-    e.target.querySelectorAll(".rev").forEach(r => r.classList.add("visto"));
-    const i = caps.indexOf(e.target);
-    [...pontos.children].forEach((a, j) => a.classList.toggle("ativo", i === j));
-  }
-}), { threshold: .25 });
-caps.forEach(c => obs.observe(c));
+// Cada bloco aparece quando ele mesmo entra na tela. Antes era a seção inteira com 25%
+// visível: no celular a seção do ranking passa de 4 telas e o conteúdo nunca aparecia.
+const revelar = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add("visto"); revelar.unobserve(e.target); }
+}), { threshold: 0.08 });
+document.querySelectorAll(".rev").forEach(r => revelar.observe(r));
+// O ponto ativo é a seção que cruza o meio da tela.
+const marcar = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { const i = caps.indexOf(e.target); [...pontos.children].forEach((a, j) => a.classList.toggle("ativo", i === j)); }
+}), { rootMargin: "-50% 0px -50% 0px" });
+caps.forEach(c => marcar.observe(c));
 addEventListener("scroll", () => {
   const p = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);
   document.querySelector("#progresso span").style.width = (p * 100) + "%";
