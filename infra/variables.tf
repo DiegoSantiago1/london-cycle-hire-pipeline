@@ -37,6 +37,18 @@ variable "email_alertas" {
   # Fica em terraform.tfvars, fora do git (o repositório é público).
 }
 
+variable "athena_inicio_bruto" {
+  description = "Primeiro dia (UTC) com retratos no S3: início da projeção de partições do Athena."
+  type        = string
+  default     = "2026-10-14"
+}
+
+variable "athena_limite_bytes" {
+  description = "Trava de custo: nenhuma consulta do Athena pode ler mais que isto (1 GB = US$ 0,005)."
+  type        = number
+  default     = 1073741824
+}
+
 variable "retencao_logs_dias" {
   description = "Por quantos dias o CloudWatch guarda os logs da Lambda."
   type        = number

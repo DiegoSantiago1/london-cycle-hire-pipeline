@@ -63,8 +63,9 @@ O desafio de engenharia é que **o dado não para de chegar**: carga incremental
 | **Coleta** (`src/bicicletas/coleta_api.py`) | Só biblioteca padrão do Python, rodando como função AWS Lambda (Python 3.14, arm64) disparada pelo EventBridge Scheduler; o mesmo arquivo continua rodando no GitHub Actions, de reserva. Três tentativas com espera crescente; resposta sem a forma de BikePoint (página HTML de erro, lista vazia, campo faltando) é execução com falha e nunca entra no bruto. Cada execução grava um registro (sucesso ou falha, quem disparou, número de estações, SHA-256): o GitHub apaga o histórico em 90 dias, o registro fica. |
 | **Bruto** | Cada resposta guardada byte a byte (gzip com `mtime=0`: o mesmo conteúdo dá o mesmo hash), guardada no S3 em `bruto/bikepoint/data=AAAA-MM-DD/...`, nunca sobrescrita: a Lambda grava com `If-None-Match: *`, então o próprio S3 recusa substituir uma chave que já existe; o papel da função só tem `PutObject`; e o bucket é versionado. Um job diário espelha cada dia numa release pública do GitHub, então o bruto também existe fora da AWS. Um `.tar` diário determinístico com manifesto de hashes faz o job diário baixar 28 arquivos em vez de ~2.700. |
 | **Arquivos de viagens** (`viagens_download.py`, `viagens_carga.py`) | Baixados por ETag com recibo (tamanho, SHA-256, data de publicação), num arquivo `.parcial` trocado só depois de conferido. Carregados **pelo nome da coluna**, nunca pela posição; coluna desconhecida, coluna faltando ou linha com número errado de campos recusa o arquivo. Uma transação por arquivo: apaga as linhas daquele arquivo, insere, registra a versão. Rodar duas vezes não duplica; arquivo republicado substitui a versão anterior; falha no meio deixa a versão anterior intacta. |
-| **Nuvem** (`infra/`, Terraform) | 22 recursos, todos cobrados por uso (sem servidor, banco ou NAT): bucket S3 (acesso público bloqueado, só TLS, versionado), Lambda, EventBridge Scheduler, papéis do IAM com menor privilégio, logs no CloudWatch (14 dias) e dois alarmes (falhas; coleta parada) enviados por e-mail. O GitHub Actions lê o bruto pelo **OIDC**: um token de curta duração trocado por um papel só de leitura, restrito à branch `main` deste repositório, sem chave de acesso guardada em lugar nenhum. |
+| **Nuvem** (`infra/`, Terraform) | 31 recursos, todos cobrados por uso (sem servidor, banco ou NAT): bucket S3 (acesso público bloqueado, só TLS, versionado), Lambda, EventBridge Scheduler, papéis do IAM com menor privilégio, logs no CloudWatch (14 dias) e dois alarmes (falhas; coleta parada) enviados por e-mail. O GitHub Actions lê o bruto pelo **OIDC**: um token de curta duração trocado por um papel só de leitura, restrito à branch `main` deste repositório, sem chave de acesso guardada em lugar nenhum. |
 | **dbt** (`dbt/`) | `staging` (tipos, os dois formatos unificados) → `intermediario` → `marts` (ocupação por estação e hora, demanda perdida, ranking, fluxos, saúde): 17 modelos com 47 testes de dados e source freshness (retratos: aviso com 1 h, erro com 3 h). |
+| **SQL no data lake** (`athena/`, Glue + Athena) | Os arquivos brutos do S3 podem ser consultados com SQL sem carregar nada em banco: uma tabela do Glue lê cada retrato (JSON numa linha só) como texto, e as views abrem cada estação numa linha (`json_parse` + `UNNEST`), com as mesmas regras do dbt. As partições vêm do nome da pasta (projeção de partições, sem crawler), e um grupo de trabalho recusa consulta que leia mais de 1 GB. Conferido em 20/10: seis contagens idênticas às de uma contagem independente em Python sobre os mesmos 96 arquivos; um dia lê 7,7 MB e o lago inteiro 59 MB (cerca de US$ 0,0003). Também mediu o agendador: **96 de 96 janelas por dia, atraso mediano de 20 s**. Detalhes em [docs/ATHENA.md](docs/ATHENA.md). |
 | **Página** (`site/`) | Exportada só depois que o `dbt build` passa; teste falhando mantém a página de ontem. Coleta atrasada não bloqueia a página: ela mostra a saúde em vermelho. |
 
 ## Qualidade dos dados: medir antes de decidir
@@ -95,18 +96,22 @@ python -m bicicletas.agregados exportar && python -m bicicletas.agregados carreg
 python -m bicicletas.retratos_carga --pasta <pasta com os retratos>
 python -m bicicletas.dbt_rodar build --select tag:diario
 python -m bicicletas.exportar_site
-pytest                                   # 217 testes; pytest -m rede também usa a API real
+pytest                                   # 236 testes; pytest -m rede também usa a API real
 
 # Coleta na nuvem (opcional; precisa de conta na AWS e de `aws login`)
 bash infra/tf.sh init && bash infra/tf.sh plan -out=plano.tfplan && bash infra/tf.sh apply plano.tfplan
+
+# SQL no bruto do S3 (Athena; precisa de `aws login`)
+bash scripts/athena.sh athena/01_view_estacoes.sql athena/02_view_coletas.sql
+bash scripts/athena.sh athena/consultas/atraso_agendador.sql
 ```
 
 ## Testes
 
-217 testes automáticos e mais um contra a API ao vivo:
+236 testes automáticos e mais um contra a API ao vivo:
 - **Entradas hostis:** HTML no lugar de JSON, gzip truncado, coluna desconhecida no CSV, SQL injection em nomes, arquivo alterado depois do download, arquivo republicado e falha no meio de uma carga.
 - **Gravação no S3** contra um bucket falso que respeita o `If-None-Match` como o S3 de verdade.
-- **Scripts de shell** rodando contra `gh` e `aws` falsos.
+- **Scripts de shell** (inclusive o executor do Athena) rodando contra `gh` e `aws` falsos, e os arquivos SQL do Athena (views só criam views, consultas só leem, o padrão do nome do arquivo bate com o que a coleta grava).
 - **Teste de ponta a ponta:** vai do bruto ao dbt, aos agregados, ao dbt diário e aos dados da página, conferindo os números que saem do outro lado (45 minutos vazia × 2,5 retiradas por hora = 1,9 viagem perdida).
 
 O CI roda tudo a cada push contra um PostgreSQL de verdade, mais `terraform fmt` e `validate`, e aviso vira erro.

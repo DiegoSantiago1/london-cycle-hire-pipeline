@@ -1,6 +1,6 @@
 # Infrastructure (AWS + Terraform)
 
-The live collector runs on AWS. Everything here is created and destroyed by Terraform; nothing was clicked in the console. Decisions D45–D49 in [docs/DECISOES.md](../docs/DECISOES.md).
+The live collector runs on AWS. Everything here is created and destroyed by Terraform; nothing was clicked in the console. Decisions D45–D50 in [docs/DECISOES.md](../docs/DECISOES.md).
 
 ```
 EventBridge Scheduler ── cron(7,22,37,52 * * * ? *) UTC, no flexible window
@@ -18,6 +18,7 @@ CloudWatch: Lambda logs (14 days) · alarm "failing" (≥2 errors/hour) · alarm
 | `scheduler.tf` | The schedule and a role that can only invoke this function (`aws:SourceAccount` condition). The event `{"gatilho": "eventbridge_scheduler"}` marks the run as scheduled in the run record |
 | `github_oidc.tf` | GitHub's OIDC provider and the read-only role for the daily jobs |
 | `monitoring.tf` | SNS topic, e-mail subscription (must be confirmed by clicking the link AWS sends) and the two alarms |
+| `athena.tf` | Glue database and table over the raw snapshots (partition projection, no crawler), an Athena workgroup that refuses queries reading more than 1 GB, and a separate encrypted results bucket that deletes results after 7 days. Views and queries live in `athena/` ([docs/ATHENA.md](../docs/ATHENA.md)) |
 
 ## How the raw data stays immutable
 
@@ -28,7 +29,7 @@ CloudWatch: Lambda logs (14 days) · alarm "failing" (≥2 errors/hour) · alarm
 
 ## Cost
 
-Nothing billed per hour (no server, managed database or NAT gateway). Usage is about 2,900 Lambda runs, ~6,000 S3 writes and ~230 MB of new data a month. The account is on the AWS Free plan (credits until 13 Apr 2027) with a budget alert from the first cent; real cost will be read from Cost Explorer after the first full month, not estimated here.
+Nothing billed per hour (no server, managed database or NAT gateway). Usage is about 2,900 Lambda runs, ~6,000 S3 writes and ~230 MB of new data a month. The account is on the AWS Free plan (credits until 13 Apr 2027) with a budget alert from the first cent; real cost will be read from Cost Explorer after the first full month, not estimated here. Athena bills US$ 5 per TB read: a query over the whole lake (59 MB on 21 Oct 2026) costs about US$ 0.0003, and the workgroup caps every query at 1 GB.
 
 ## Run it
 

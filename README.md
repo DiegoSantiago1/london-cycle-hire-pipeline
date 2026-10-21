@@ -64,7 +64,8 @@ The engineering challenge is that **the data never stops arriving**: incremental
 | **Raw data** | Each response stored byte for byte (gzip `mtime=0`, so the same content gives the same hash), stored in S3 under `bruto/bikepoint/data=YYYY-MM-DD/...`, never overwritten: the Lambda writes with `If-None-Match: *`, so S3 itself refuses to replace an existing key, the function's role can only `PutObject`, and the bucket is versioned. A daily job mirrors each day to a public GitHub Release, so the raw data also lives outside AWS. A deterministic daily `.tar` with a hash manifest lets the daily job download 28 files instead of ~2,700. |
 | **Trip files** (`viagens_download.py`, `viagens_carga.py`) | Downloaded by ETag with a receipt (size, SHA-256, publication date), into a `.parcial` file swapped in only after checking. Loaded **by column name**, never by position; an unknown column, a missing one or a row with the wrong number of fields rejects the file. One transaction per file: delete that file's rows, insert, record the version. Running twice does not duplicate; a republished file replaces the old version; a failure halfway leaves the previous version intact. |
 | **dbt** (`dbt/`) | `staging` (types, two file formats unified) → `intermediario` → `marts` (occupancy by station and hour, lost demand, ranking, flows, health), 17 models with 47 data tests and source freshness (snapshots: warn after 1 h, error after 3 h). |
-| **Cloud** (`infra/`, Terraform) | 22 resources, all billed per use (no server, database or NAT): S3 bucket (public access blocked, TLS only, versioned), Lambda, EventBridge Scheduler, least-privilege IAM roles, CloudWatch logs (14 days) and two alarms (failures; collector stopped) sent by e-mail. GitHub Actions reads the raw data through **OIDC**: a short-lived token exchanged for a read-only role restricted to this repository's `main` branch, with no access key stored anywhere. |
+| **Cloud** (`infra/`, Terraform) | 31 resources, all billed per use (no server, database or NAT): S3 bucket (public access blocked, TLS only, versioned), Lambda, EventBridge Scheduler, least-privilege IAM roles, CloudWatch logs (14 days) and two alarms (failures; collector stopped) sent by e-mail. GitHub Actions reads the raw data through **OIDC**: a short-lived token exchanged for a read-only role restricted to this repository's `main` branch, with no access key stored anywhere. |
+| **SQL on the data lake** (`athena/`, Glue + Athena) | The raw files in S3 are queryable with SQL without loading them anywhere: a Glue table reads each one-line JSON snapshot as text, and views unnest it into one row per station (`json_parse` + `UNNEST`), with the same rules as dbt. Partitions come from the folder name (partition projection, no crawler); a workgroup refuses any query that reads more than 1 GB. Checked on 20/10: six counts identical to an independent Python count over the same 96 files; one day reads 7.7 MB, the whole lake 59 MB (about US$ 0.0003). It also measured the scheduler: **96 of 96 windows a day, median delay 20 s**. Details in [docs/ATHENA.md](docs/ATHENA.md). |
 | **Page** (`site/`) | Exported only after `dbt build` passes; a failing test keeps yesterday's page. A late collector does not block the page: it shows the health in red. |
 
 ## Data quality: measured before deciding
@@ -95,15 +96,19 @@ python -m bicicletas.agregados exportar && python -m bicicletas.agregados carreg
 python -m bicicletas.retratos_carga --pasta <folder with snapshots>
 python -m bicicletas.dbt_rodar build --select tag:diario
 python -m bicicletas.exportar_site
-pytest                                   # 217 tests; pytest -m rede also hits the real API
+pytest                                   # 236 tests; pytest -m rede also hits the real API
 
 # Cloud collector (optional; needs an AWS account and `aws login`)
 bash infra/tf.sh init && bash infra/tf.sh plan -out=plano.tfplan && bash infra/tf.sh apply plano.tfplan
+
+# SQL on the raw data in S3 (Athena; needs `aws login`)
+bash scripts/athena.sh athena/01_view_estacoes.sql athena/02_view_coletas.sql
+bash scripts/athena.sh athena/consultas/atraso_agendador.sql
 ```
 
 ## Tests
 
-217 automated tests plus one against the live API: hostile inputs (HTML instead of JSON, truncated gzip, an unknown CSV column, SQL injection in names, a file changed after download, a republished file, a failure halfway through a load), the S3 writer against a fake bucket that enforces `If-None-Match` like S3 does, the shell scripts against fake `gh` and `aws` commands, and an **end-to-end test** that goes raw → dbt → aggregates → daily dbt → page data and checks the numbers that come out (45 minutes empty × 2.5 pickups an hour = 1.9 lost trips). CI runs everything on every push against a real PostgreSQL, plus `terraform fmt` and `validate`; warnings are errors.
+236 automated tests plus one against the live API: hostile inputs (HTML instead of JSON, truncated gzip, an unknown CSV column, SQL injection in names, a file changed after download, a republished file, a failure halfway through a load), the S3 writer against a fake bucket that enforces `If-None-Match` like S3 does, the shell scripts (including the Athena runner) against fake `gh` and `aws` commands, the Athena SQL files (views only create views, queries only read, the file-name pattern matches what the collector writes), and an **end-to-end test** that goes raw → dbt → aggregates → daily dbt → page data and checks the numbers that come out (45 minutes empty × 2.5 pickups an hour = 1.9 lost trips). CI runs everything on every push against a real PostgreSQL, plus `terraform fmt` and `validate`; warnings are errors.
 
 ## Limitations and next steps
 
